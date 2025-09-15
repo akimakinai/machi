@@ -14,11 +14,10 @@ mod chunk;
 mod render;
 
 fn main() {
+    println!("{:?}", std::env::var("RUST_LOG"));
+
     App::new()
-        .add_plugins(DefaultPlugins.set(LogPlugin {
-            filter: format!("{},{}=debug", DEFAULT_FILTER, env!("CARGO_CRATE_NAME")),
-            ..default()
-        }))
+        .add_plugins(DefaultPlugins)
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(CameraControllerPlugin)

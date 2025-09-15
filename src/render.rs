@@ -1,6 +1,7 @@
-use bevy::{ecs::entity::EntityHashMap, prelude::*};
+use bevy::{asset::RenderAssetUsages, ecs::entity::EntityHashMap, mesh::Indices, prelude::*};
+use mcubes::MarchingCubes;
 
-use crate::chunk::{Chunk, ChunkUnloaded, ChunkUpdated, CHUNK_HEIGHT, CHUNK_SIZE};
+use crate::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkUnloaded, ChunkUpdated};
 
 pub struct RenderPlugin;
 
@@ -36,10 +37,13 @@ fn chunk_updated(
     debug!("Chunk updated: {:?}", chunk.position);
 
     let mesh_parent = commands
-        .spawn(Transform::from_xyz(
-            chunk.position.x as f32 * CHUNK_SIZE as f32,
-            0.0,
-            chunk.position.y as f32 * CHUNK_SIZE as f32,
+        .spawn((
+            Transform::from_xyz(
+                chunk.position.x as f32 * CHUNK_SIZE as f32,
+                0.0,
+                chunk.position.y as f32 * CHUNK_SIZE as f32,
+            ),
+            Visibility::Visible,
         ))
         .id();
 
@@ -57,37 +61,101 @@ fn chunk_updated(
         );
     }
 
-    let cube = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
-    let dirt_material = materials.add(Color::srgb(0.5, 0.25, 0.0));
+    // let cube = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
+    // let dirt_material = materials.add(Color::srgb(0.5, 0.25, 0.0));
     let grass_material = materials.add(Color::srgb(0.0, 0.5, 0.0));
-    let unknown_material = materials.add(Color::srgb(1.0, 0.0, 1.0));
+    // let unknown_material = materials.add(Color::srgb(1.0, 0.0, 1.0));
 
-    commands.entity(mesh_parent).with_children(|parent| {
-        for x in 0..CHUNK_SIZE as i32 {
-            for z in 0..CHUNK_SIZE as i32 {
-                for y in 0..CHUNK_HEIGHT as i32 {
-                    let block_type = chunk.get_block(IVec3::new(x as i32, y as i32, z as i32));
-                    if block_type != 0 {
-                        parent.spawn((
-                            Mesh3d(cube.clone()),
-                            MeshMaterial3d(match block_type {
-                                1 => dirt_material.clone(),
-                                2 => grass_material.clone(),
-                                _ => unknown_material.clone(),
-                            }),
-                            Transform::from_xyz(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5),
-                            Name::new(format!(
-                                "Block ({}, {}, {})",
-                                chunk.position.x * CHUNK_SIZE as i32 + x,
-                                y,
-                                chunk.position.y * CHUNK_SIZE as i32 + z,
-                            )),
-                        ));
-                    }
-                }
+    let mut values = vec![];
+
+    // TODO: sample outmost layer of neighboring chunks
+
+    for z in 0..CHUNK_SIZE {
+        for y in 0..CHUNK_HEIGHT {
+            for x in 0..CHUNK_SIZE {
+                let block_type = chunk.get_block(IVec3::new(x as i32, y as i32, z as i32));
+                values.push(if block_type != 0 { 1.0 } else { 0.0 });
             }
         }
+    }
+
+    let mcmesh = MarchingCubes::new(
+        (CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE),
+        (1.0, 1.0, 1.0),
+        (1.0, 1.0, 1.0),
+        default(),
+        values,
+        0.5,
+    )
+    .unwrap()
+    .generate(mcubes::MeshSide::OutsideOnly);
+
+    let mut bvmesh = Mesh::new(
+        bevy::mesh::PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
+
+    let to_arr = |v: lin_alg::f32::Vec3| [v.x, v.y, v.z];
+
+    let mut positions = vec![];
+    let mut normals = vec![];
+    let mut uvs = vec![];
+
+    for pos in &mcmesh.vertices {
+        positions.push(to_arr(pos.posit));
+        normals.push(to_arr(pos.normal));
+        uvs.push([0.0, 0.0]);
+    }
+
+    let indices = mcmesh.indices.iter().map(|&i| i as u32).collect::<Vec<_>>();
+
+    println!("{:?}", positions);
+
+    bvmesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    bvmesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    bvmesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    bvmesh.insert_indices(Indices::U32(indices));
+
+    let bvmesh = meshes.add(bvmesh);
+
+    commands.entity(mesh_parent).with_children(|parent| {
+        parent.spawn((
+            Mesh3d(bvmesh),
+            MeshMaterial3d(grass_material.clone()),
+            Transform::default(),
+            Name::new(format!(
+                "Chunk ({}, {})",
+                chunk.position.x, chunk.position.y
+            )),
+        ));
     });
+
+    // commands.entity(mesh_parent).with_children(|parent| {
+    //     for x in 0..CHUNK_SIZE as i32 {
+    //         for z in 0..CHUNK_SIZE as i32 {
+    //             for y in 0..CHUNK_HEIGHT as i32 {
+    //                 let block_type = chunk.get_block(IVec3::new(x as i32, y as i32, z as i32));
+    //                 if block_type != 0 {
+    //                     parent.spawn((
+    //                         Mesh3d(cube.clone()),
+    //                         MeshMaterial3d(match block_type {
+    //                             1 => dirt_material.clone(),
+    //                             2 => grass_material.clone(),
+    //                             _ => unknown_material.clone(),
+    //                         }),
+    //                         Transform::from_xyz(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5),
+    //                         Name::new(format!(
+    //                             "Block ({}, {}, {})",
+    //                             chunk.position.x * CHUNK_SIZE as i32 + x,
+    //                             y,
+    //                             chunk.position.y * CHUNK_SIZE as i32 + z,
+    //                         )),
+    //                     ));
+    //                 }
+    //             }
+    //         }
+    //     }
+    // });
 
     Ok(())
 }
