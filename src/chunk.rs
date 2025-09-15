@@ -1,3 +1,5 @@
+use std::f64::consts::E;
+
 use bevy::{
     ecs::system::{
         SystemParam,
@@ -116,24 +118,26 @@ impl<'w, 's> BlockRayCast<'w, 's> {
             if let Some((block, entity)) = self.get_block(block_pos)
                 && block != 0
             {
-                let local = current_position - (block_pos.as_vec3() + Vec3::splat(0.5));
+                let local = (current_position - step) - (block_pos.as_vec3() + Vec3::splat(0.5));
+                let dir = Dir3::new(direction).unwrap_or(Dir3::Y);
+                let dist = RayCast3d::new(local, dir, 1.0)
+                    .aabb_intersection_at(&Aabb3d::new(Vec3::ZERO, Vec3::splat(0.5)))
+                    .unwrap_or_default();
 
-                let hit_face = if local.x.abs() > local.y.abs() && local.x.abs() > local.z.abs() {
-                    if local.x > 0.0 {
-                        HitFace::XPos
-                    } else {
-                        HitFace::XNeg
-                    }
-                } else if local.y.abs() > local.z.abs() {
-                    if local.y > 0.0 {
-                        HitFace::YPos
-                    } else {
-                        HitFace::YNeg
-                    }
-                } else if local.z > 0.0 {
+                let hit_position = local + dir.as_vec3() * dist;
+
+                let hit_face = if (hit_position.x - 0.5).abs() < f32::EPSILON {
+                    HitFace::XPos
+                } else if (hit_position.x + 0.5).abs() < f32::EPSILON {
+                    HitFace::XNeg
+                } else if (hit_position.z - 0.5).abs() < f32::EPSILON {
                     HitFace::ZPos
-                } else {
+                } else if (hit_position.z + 0.5).abs() < f32::EPSILON {
                     HitFace::ZNeg
+                } else if (hit_position.y - 0.5).abs() < f32::EPSILON {
+                    HitFace::YPos
+                } else {
+                    HitFace::YNeg
                 };
 
                 return Some((block_pos, hit_face, entity));
