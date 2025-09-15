@@ -1,5 +1,6 @@
 use bevy::{
     ecs::system::{SystemParam, lifetimeless::Read},
+    platform::collections::HashMap,
     prelude::*,
 };
 
@@ -7,7 +8,11 @@ pub struct ChunkPlugin;
 
 impl Plugin for ChunkPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, update_new_chunks)
+        app.init_resource::<ChunkMap>()
+            .add_systems(Update, update_chunk_map)
+            .add_observer(remove_chunk_map);
+
+        app.add_observer(update_new_chunks)
             .add_systems(Update, (block_hover_gizmo, chunk_gizmo));
     }
 }
@@ -18,50 +23,51 @@ pub const CHUNK_HEIGHT: usize = 256;
 #[derive(Component)]
 pub struct Chunk {
     pub position: IVec2,
-    pub data: Box<[[[u8; CHUNK_HEIGHT]; CHUNK_SIZE]; CHUNK_SIZE]>,
+    pub data: Box<[[[u8; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]>,
 }
 
 impl Chunk {
     pub fn new(position: IVec2) -> Self {
         Self {
             position,
-            data: Box::new([[[0; CHUNK_HEIGHT]; CHUNK_SIZE]; CHUNK_SIZE]),
+            data: Box::new([[[0; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]),
         }
     }
 
-    pub fn set_block(&mut self, local_pos: IVec3, block_type: u8) {
-        if local_pos.x >= 0
-            && local_pos.x < CHUNK_SIZE as i32
-            && local_pos.y >= 0
-            && local_pos.y < CHUNK_HEIGHT as i32
-            && local_pos.z >= 0
-            && local_pos.z < CHUNK_SIZE as i32
-        {
-            self.data[local_pos.x as usize][local_pos.z as usize][local_pos.y as usize] =
-                block_type;
-        } else {
-            panic!("Local position out of bounds: {:?}", local_pos);
-        }
+    pub fn get_block(&self, position: IVec3) -> u8 {
+        self.data[position.x as usize][position.y as usize][position.z as usize]
     }
 
-    pub fn get_block(&self, local_pos: IVec3) -> u8 {
-        if local_pos.x >= 0
-            && local_pos.x < CHUNK_SIZE as i32
-            && local_pos.y >= 0
-            && local_pos.y < CHUNK_HEIGHT as i32
-            && local_pos.z >= 0
-            && local_pos.z < CHUNK_SIZE as i32
-        {
-            self.data[local_pos.x as usize][local_pos.z as usize][local_pos.y as usize]
-        } else {
-            panic!("Local position out of bounds: {:?}", local_pos);
-        }
+    pub fn set_block(&mut self, position: IVec3, block: u8) {
+        self.data[position.x as usize][position.y as usize][position.z as usize] = block;
     }
+}
+
+#[derive(Resource, Default)]
+pub struct ChunkMap(pub HashMap<IVec2, Entity>);
+
+fn update_chunk_map(
+    mut chunk_map: ResMut<ChunkMap>,
+    chunks: Query<(Entity, &Chunk), Added<Chunk>>,
+) {
+    for (entity, chunk) in &chunks {
+        chunk_map.0.insert(chunk.position, entity);
+    }
+}
+
+fn remove_chunk_map(
+    removed: On<Remove, Chunk>,
+    mut chunk_map: ResMut<ChunkMap>,
+    chunks: Query<&Chunk>,
+) {
+    let chunk_id = removed.event().event_target();
+    chunk_map.0.remove(&chunks.get(chunk_id).unwrap().position);
 }
 
 #[derive(SystemParam)]
 pub struct BlockRayCast<'w, 's> {
     chunks: Query<'w, 's, (Entity, Read<Chunk>)>,
+    chunk_map: Res<'w, ChunkMap>,
 }
 
 impl<'w, 's> BlockRayCast<'w, 's> {
@@ -99,18 +105,20 @@ impl<'w, 's> BlockRayCast<'w, 's> {
             return None;
         }
 
-        // TODO: Optimize chunk lookup
-        for (entity, chunk) in self.chunks.iter() {
-            if chunk.position == IVec2::new(chunk_x, chunk_z) {
-                if local_y < CHUNK_HEIGHT as i32 {
-                    let block = chunk.get_block(IVec3::new(local_x, local_y, local_z));
-                    return Some((block, entity));
-                } else {
-                    // Out of height bounds
-                    return Some((0, entity));
-                }
+        let (entity, chunk) = self
+            .chunks
+            .get(*self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z))?)
+            .ok()?;
+        if chunk.position == IVec2::new(chunk_x, chunk_z) {
+            if local_y < CHUNK_HEIGHT as i32 {
+                let block = chunk.get_block(IVec3::new(local_x, local_y, local_z));
+                return Some((block, entity));
+            } else {
+                // Out of height bounds
+                return Some((0, entity));
             }
         }
+
         // Chunk not found
         None
     }
@@ -119,10 +127,8 @@ impl<'w, 's> BlockRayCast<'w, 's> {
 #[derive(EntityEvent)]
 pub struct ChunkUpdated(Entity);
 
-fn update_new_chunks(mut commands: Commands, chunks: Query<Entity, Added<Chunk>>) {
-    for chunk in &chunks {
-        commands.trigger(ChunkUpdated(chunk));
-    }
+fn update_new_chunks(added: On<Add, Chunk>, mut commands: Commands) {
+    commands.trigger(ChunkUpdated(added.event().event_target()));
 }
 
 #[derive(EntityEvent)]

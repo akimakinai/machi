@@ -1,4 +1,4 @@
-use bevy::{asset::RenderAssetUsages, ecs::entity::EntityHashMap, mesh::Indices, prelude::*};
+use bevy::{asset::RenderAssetUsages, ecs::entity::EntityHashMap, mesh::Indices, pbr::wireframe::Wireframe, prelude::*};
 use mcubes::MarchingCubes;
 
 use crate::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkUnloaded, ChunkUpdated};
@@ -62,24 +62,39 @@ fn chunk_updated(
 
     // let cube = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
     // let dirt_material = materials.add(Color::srgb(0.5, 0.25, 0.0));
-    let grass_material = materials.add(Color::srgb(0.0, 0.5, 0.0));
+    let mut grass_material = StandardMaterial::from(Color::srgb(0.0, 0.5, 0.0));
+    grass_material.perceptual_roughness = 1.0;
+    // grass_material.cull_mode = None;
+    let grass_material = materials.add(grass_material);
     // let unknown_material = materials.add(Color::srgb(1.0, 0.0, 1.0));
 
     let mut values = vec![];
 
     // TODO: sample outmost layer of neighboring chunks
+    for z in -1..(CHUNK_SIZE as i32 + 1) {
+        for y in -1..(CHUNK_HEIGHT as i32 + 1) {
+            for x in -1..(CHUNK_SIZE as i32 + 1) {
+                if x < 0 || x >= CHUNK_SIZE as i32 {
+                    values.push(0.0);
+                    continue;
+                }
+                if z < 0 || z >= CHUNK_SIZE as i32 {
+                    values.push(0.0);
+                    continue;
+                }
+                if y < 0 || y >= CHUNK_HEIGHT as i32 {
+                    values.push(0.0);
+                    continue;
+                }
 
-    for z in 0..CHUNK_SIZE {
-        for y in 0..CHUNK_HEIGHT {
-            for x in 0..CHUNK_SIZE {
-                let block_type = chunk.get_block(IVec3::new(x as i32, y as i32, z as i32));
+                let block_type = chunk.get_block(IVec3::new(x, y, z));
                 values.push(if block_type != 0 { 1.0 } else { 0.0 });
             }
         }
     }
 
     let mcmesh = MarchingCubes::new(
-        (CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE),
+        (CHUNK_SIZE + 2, CHUNK_HEIGHT + 2, CHUNK_SIZE + 2),
         (1.0, 1.0, 1.0),
         (1.0, 1.0, 1.0),
         default(),
@@ -106,9 +121,13 @@ fn chunk_updated(
         uvs.push([0.0, 0.0]);
     }
 
-    let indices = mcmesh.indices.iter().map(|&i| i as u32).collect::<Vec<_>>();
-
-    println!("{:?}", positions);
+    let indices = mcmesh
+        .indices
+        .iter()
+        .map(|&i| i as u32)
+        // probably CW/CCW reversed
+        .rev()
+        .collect::<Vec<_>>();
 
     bvmesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     bvmesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
@@ -121,40 +140,14 @@ fn chunk_updated(
         parent.spawn((
             Mesh3d(bvmesh),
             MeshMaterial3d(grass_material.clone()),
-            Transform::default(),
+            Transform::from_translation(Vec3::splat(-0.5)),
+            Wireframe,
             Name::new(format!(
                 "Chunk ({}, {})",
                 chunk.position.x, chunk.position.y
             )),
         ));
     });
-
-    // commands.entity(mesh_parent).with_children(|parent| {
-    //     for x in 0..CHUNK_SIZE as i32 {
-    //         for z in 0..CHUNK_SIZE as i32 {
-    //             for y in 0..CHUNK_HEIGHT as i32 {
-    //                 let block_type = chunk.get_block(IVec3::new(x as i32, y as i32, z as i32));
-    //                 if block_type != 0 {
-    //                     parent.spawn((
-    //                         Mesh3d(cube.clone()),
-    //                         MeshMaterial3d(match block_type {
-    //                             1 => dirt_material.clone(),
-    //                             2 => grass_material.clone(),
-    //                             _ => unknown_material.clone(),
-    //                         }),
-    //                         Transform::from_xyz(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5),
-    //                         Name::new(format!(
-    //                             "Block ({}, {}, {})",
-    //                             chunk.position.x * CHUNK_SIZE as i32 + x,
-    //                             y,
-    //                             chunk.position.y * CHUNK_SIZE as i32 + z,
-    //                         )),
-    //                     ));
-    //                 }
-    //             }
-    //         }
-    //     }
-    // });
 
     Ok(())
 }
