@@ -3,11 +3,13 @@ use bevy::{pbr::wireframe::WireframePlugin, prelude::*, render::RenderDebugFlags
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
     chunk::{Chunk, ChunkPlugin},
+    edit::EditPlugin,
     render::RenderPlugin,
 };
 
 mod camera_controller;
 mod chunk;
+mod edit;
 mod render;
 
 fn main() {
@@ -15,6 +17,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)
+        .add_plugins(EditPlugin)
         .add_plugins(WireframePlugin::new(RenderDebugFlags::default()))
         .add_plugins(CameraControllerPlugin)
         .add_systems(Startup, startup)

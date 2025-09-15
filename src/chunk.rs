@@ -1,5 +1,8 @@
 use bevy::{
-    ecs::system::{SystemParam, lifetimeless::Read},
+    ecs::system::{
+        SystemParam,
+        lifetimeless::{Read, Write},
+    },
     platform::collections::HashMap,
     prelude::*,
 };
@@ -12,8 +15,11 @@ impl Plugin for ChunkPlugin {
             .add_systems(Update, update_chunk_map)
             .add_observer(remove_chunk_map);
 
+        app.init_resource::<HoveredBlock>()
+            .add_systems(Update, block_hover);
+
         app.add_observer(update_new_chunks)
-            .add_systems(Update, (block_hover_gizmo, chunk_gizmo));
+            .add_systems(Update, chunk_gizmo);
     }
 }
 
@@ -109,18 +115,50 @@ impl<'w, 's> BlockRayCast<'w, 's> {
             .chunks
             .get(*self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z))?)
             .ok()?;
-        if chunk.position == IVec2::new(chunk_x, chunk_z) {
-            if local_y < CHUNK_HEIGHT as i32 {
-                let block = chunk.get_block(IVec3::new(local_x, local_y, local_z));
-                return Some((block, entity));
-            } else {
-                // Out of height bounds
-                return Some((0, entity));
-            }
+        if local_y < CHUNK_HEIGHT as i32 {
+            let block = chunk.get_block(IVec3::new(local_x, local_y, local_z));
+            return Some((block, entity));
+        } else {
+            // Out of height bounds
+            return Some((0, entity));
         }
 
         // Chunk not found
         None
+    }
+}
+
+#[derive(SystemParam)]
+pub struct Blocks<'w, 's> {
+    chunks: Query<'w, 's, Write<Chunk>>,
+    chunk_map: Res<'w, ChunkMap>,
+    commands: Commands<'w, 's>,
+}
+
+impl<'w, 's> Blocks<'w, 's> {
+    pub fn set_block(&mut self, position: IVec3, block: u8) -> Result<()> {
+        let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
+        let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
+        let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
+        let local_y = position.y;
+        let local_z = position.z.rem_euclid(CHUNK_SIZE as i32);
+
+        if local_y < 0 {
+            return Ok(());
+        }
+
+        let chunk_id = *self
+            .chunk_map
+            .0
+            .get(&IVec2::new(chunk_x, chunk_z))
+            .ok_or(BevyError::from("Chunk not found"))?;
+
+        let mut chunk = self.chunks.get_mut(chunk_id)?;
+        chunk.set_block(IVec3::new(local_x, local_y, local_z), block);
+
+        self.commands.trigger(ChunkUpdated(chunk_id));
+
+        Ok(())
     }
 }
 
@@ -134,19 +172,25 @@ fn update_new_chunks(added: On<Add, Chunk>, mut commands: Commands) {
 #[derive(EntityEvent)]
 pub struct ChunkUnloaded(Entity);
 
-// debug systems
+#[derive(Resource, Default, PartialEq)]
+pub struct HoveredBlock(pub Option<IVec3>);
 
-fn block_hover_gizmo(
+fn block_hover(
     ray_map: Res<bevy::picking::backend::ray::RayMap>,
     block_raycast: BlockRayCast,
     mut gizmos: Gizmos,
+    mut hovered: ResMut<HoveredBlock>,
 ) -> Result<()> {
+    let mut new_hovered = None;
+
     for (_id, ray) in ray_map.iter() {
         if let Some((block_pos, _face)) =
             block_raycast.ray_cast(ray.origin, ray.direction.as_vec3(), 100.0)
         {
             const GIZMO_COLOR: Color = Color::Srgba(bevy::color::palettes::css::YELLOW);
             let coord = block_pos.as_vec3();
+            new_hovered = Some(block_pos);
+
             gizmos.linestrip(
                 [
                     coord + Vec3::new(0.0, 0.0, 0.0),
@@ -180,6 +224,9 @@ fn block_hover_gizmo(
             );
         }
     }
+
+    hovered.set_if_neq(HoveredBlock(new_hovered));
+
     Ok(())
 }
 
