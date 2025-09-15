@@ -1,4 +1,9 @@
-use bevy::{pbr::wireframe::WireframePlugin, prelude::*, render::RenderDebugFlags};
+use bevy::{
+    log::{DEFAULT_FILTER, LogPlugin},
+    pbr::wireframe::WireframePlugin,
+    prelude::*,
+    render::RenderDebugFlags,
+};
 
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
@@ -14,7 +19,10 @@ mod render;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(LogPlugin {
+            filter: format!("{},{}=debug", DEFAULT_FILTER, env!("CARGO_PKG_NAME")),
+            ..default()
+        }))
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(EditPlugin)

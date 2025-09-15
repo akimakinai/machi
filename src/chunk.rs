@@ -3,6 +3,7 @@ use bevy::{
         SystemParam,
         lifetimeless::{Read, Write},
     },
+    math::bounding::{Aabb3d, RayCast3d},
     platform::collections::HashMap,
     prelude::*,
 };
@@ -76,13 +77,36 @@ pub struct BlockRayCast<'w, 's> {
     chunk_map: Res<'w, ChunkMap>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HitFace {
+    XPos,
+    XNeg,
+    YPos,
+    YNeg,
+    ZPos,
+    ZNeg,
+}
+
+impl HitFace {
+    pub fn normal(&self) -> IVec3 {
+        match self {
+            HitFace::XPos => IVec3::X,
+            HitFace::XNeg => -IVec3::X,
+            HitFace::YPos => IVec3::Y,
+            HitFace::YNeg => -IVec3::Y,
+            HitFace::ZPos => IVec3::Z,
+            HitFace::ZNeg => -IVec3::Z,
+        }
+    }
+}
+
 impl<'w, 's> BlockRayCast<'w, 's> {
     pub fn ray_cast(
         &self,
         origin: Vec3,
         direction: Vec3,
         max_distance: f32,
-    ) -> Option<(IVec3, Entity)> {
+    ) -> Option<(IVec3, HitFace, Entity)> {
         let mut current_position = origin;
         let step = direction.normalize() * 0.1;
         let mut traveled_distance = 0.0;
@@ -92,7 +116,27 @@ impl<'w, 's> BlockRayCast<'w, 's> {
             if let Some((block, entity)) = self.get_block(block_pos)
                 && block != 0
             {
-                return Some((block_pos, entity));
+                let local = current_position - (block_pos.as_vec3() + Vec3::splat(0.5));
+
+                let hit_face = if local.x.abs() > local.y.abs() && local.x.abs() > local.z.abs() {
+                    if local.x > 0.0 {
+                        HitFace::XPos
+                    } else {
+                        HitFace::XNeg
+                    }
+                } else if local.y.abs() > local.z.abs() {
+                    if local.y > 0.0 {
+                        HitFace::YPos
+                    } else {
+                        HitFace::YNeg
+                    }
+                } else if local.z > 0.0 {
+                    HitFace::ZPos
+                } else {
+                    HitFace::ZNeg
+                };
+
+                return Some((block_pos, hit_face, entity));
             }
             current_position += step;
             traveled_distance += step.length();
@@ -122,9 +166,6 @@ impl<'w, 's> BlockRayCast<'w, 's> {
             // Out of height bounds
             return Some((0, entity));
         }
-
-        // Chunk not found
-        None
     }
 }
 
@@ -173,7 +214,7 @@ fn update_new_chunks(added: On<Add, Chunk>, mut commands: Commands) {
 pub struct ChunkUnloaded(Entity);
 
 #[derive(Resource, Default, PartialEq)]
-pub struct HoveredBlock(pub Option<IVec3>);
+pub struct HoveredBlock(pub Option<(IVec3, HitFace)>);
 
 fn block_hover(
     ray_map: Res<bevy::picking::backend::ray::RayMap>,
@@ -184,12 +225,14 @@ fn block_hover(
     let mut new_hovered = None;
 
     for (_id, ray) in ray_map.iter() {
-        if let Some((block_pos, _face)) =
+        if let Some((block_pos, face, _entity)) =
             block_raycast.ray_cast(ray.origin, ray.direction.as_vec3(), 100.0)
         {
             const GIZMO_COLOR: Color = Color::Srgba(bevy::color::palettes::css::YELLOW);
             let coord = block_pos.as_vec3();
-            new_hovered = Some(block_pos);
+            new_hovered = Some((block_pos, face));
+
+            gizmos.axes(Transform::from_translation(coord + Vec3::splat(0.5)), 2.0);
 
             gizmos.linestrip(
                 [
