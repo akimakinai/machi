@@ -1,7 +1,4 @@
-use bevy::{
-    log::{DEFAULT_FILTER, LogPlugin},
-    prelude::*,
-};
+use bevy::prelude::*;
 
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
@@ -14,8 +11,6 @@ mod chunk;
 mod render;
 
 fn main() {
-    println!("{:?}", std::env::var("RUST_LOG"));
-
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(ChunkPlugin)

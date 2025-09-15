@@ -27,7 +27,6 @@ fn chunk_updated(
     mut commands: Commands,
     chunks: Query<&Chunk>,
     mut rendered: ResMut<RenderedChunks>,
-    // naive render
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) -> Result<()> {
