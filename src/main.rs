@@ -1,4 +1,7 @@
-use bevy::prelude::*;
+use bevy::{
+    log::{DEFAULT_FILTER, LogPlugin},
+    prelude::*,
+};
 
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
@@ -12,7 +15,10 @@ mod render;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(LogPlugin {
+            filter: format!("{},{}=debug", DEFAULT_FILTER, env!("CARGO_CRATE_NAME")),
+            ..default()
+        }))
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(CameraControllerPlugin)
@@ -35,14 +41,12 @@ fn startup(mut commands: Commands) {
 
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(20.0, 30.0, 16.0).looking_at(Vec3::new(8.0, 16.0, 8.0), Vec3::Y),
+        Transform::from_xyz(40.0, 30.0, 8.0).looking_at(Vec3::new(8.0, 16.0, 8.0), Vec3::Y),
         CameraController::default(),
     ));
 
     commands.spawn((
-        DirectionalLight {
-            ..default()
-        },
+        DirectionalLight { ..default() },
         Transform::from_rotation(Quat::from_euler(
             EulerRot::XYZ,
             -std::f32::consts::FRAC_PI_4,

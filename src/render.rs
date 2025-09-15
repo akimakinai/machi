@@ -1,13 +1,14 @@
 use bevy::{ecs::entity::EntityHashMap, prelude::*};
 
-use crate::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkUpdated};
+use crate::chunk::{Chunk, ChunkUnloaded, ChunkUpdated, CHUNK_HEIGHT, CHUNK_SIZE};
 
 pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RenderedChunks>()
-            .add_observer(chunk_updated);
+            .add_observer(chunk_updated)
+            .add_observer(chunk_unloaded);
     }
 }
 
@@ -31,6 +32,8 @@ fn chunk_updated(
 ) -> Result<()> {
     let chunk_id = on.event().event_target();
     let chunk = chunks.get(chunk_id)?;
+
+    debug!("Chunk updated: {:?}", chunk.position);
 
     let mesh_parent = commands
         .spawn(Transform::from_xyz(
@@ -87,4 +90,16 @@ fn chunk_updated(
     });
 
     Ok(())
+}
+
+fn chunk_unloaded(
+    on: On<ChunkUnloaded>,
+    mut commands: Commands,
+    mut rendered: ResMut<RenderedChunks>,
+) {
+    let chunk_id = on.event().event_target();
+    if let Some(rc) = rendered.0.remove(&chunk_id) {
+        commands.entity(rc.mesh_parent).despawn();
+        debug!("Chunk unloaded: {:?}", rc.position);
+    }
 }

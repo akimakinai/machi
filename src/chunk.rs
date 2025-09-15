@@ -125,6 +125,9 @@ fn update_new_chunks(mut commands: Commands, chunks: Query<Entity, Added<Chunk>>
     }
 }
 
+#[derive(EntityEvent)]
+pub struct ChunkUnloaded(Entity);
+
 // debug systems
 
 fn block_hover_gizmo(
