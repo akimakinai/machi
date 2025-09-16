@@ -6,7 +6,7 @@ use bevy::{
 use crate::{
     flycam::{FlyCam, FlyCamPlugin},
     terrain::{
-        chunk::{Chunk, ChunkPlugin, ChunkUpdated},
+        chunk::{BlockId, Chunk, ChunkPlugin, ChunkUpdated},
         edit::EditPlugin,
         render::RenderPlugin,
     },
@@ -42,7 +42,7 @@ fn startup(mut commands: Commands) {
                         if cx == 0 && cz == 0 && x == 4 && z == 4 && y == 15 {
                             continue;
                         }
-                        chunk.set_block(IVec3::new(x, y, z), 2);
+                        chunk.set_block(IVec3::new(x, y, z), BlockId(1));
                     }
                 }
             }

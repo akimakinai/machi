@@ -27,26 +27,49 @@ impl Plugin for ChunkPlugin {
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_HEIGHT: usize = 256;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct BlockId(pub u8);
+
+impl BlockId {
+    pub const AIR: BlockId = BlockId(0);
+
+    /// Blocks rendered as smooth surfaces
+    pub const fn is_smooth(self) -> bool {
+        self.0 > 0 && self.0 <= 32
+    }
+
+    /// Blocks rendered as liquids
+    pub const fn is_liquid(self) -> bool {
+        self.0 > 32 && self.0 <= 64
+    }
+
+    /// Blocks rendered as cubes
+    pub const fn is_cube(self) -> bool {
+        self.0 > 64
+    }
+}
+
 #[derive(Component)]
 pub struct Chunk {
     pub position: IVec2,
-    pub data: Box<[[[u8; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]>,
+    pub blocks: Box<[[[BlockId; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]>,
 }
 
 impl Chunk {
     pub fn new(position: IVec2) -> Self {
         Self {
             position,
-            data: Box::new([[[0; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]),
+            blocks: Box::new([[[BlockId(0); CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]),
         }
     }
 
-    pub fn get_block(&self, position: IVec3) -> u8 {
-        self.data[position.x as usize][position.y as usize][position.z as usize]
+    pub fn get_block(&self, position: IVec3) -> BlockId {
+        self.blocks[position.x as usize][position.y as usize][position.z as usize]
     }
 
-    pub fn set_block(&mut self, position: IVec3, block: u8) {
-        self.data[position.x as usize][position.y as usize][position.z as usize] = block;
+    pub fn set_block(&mut self, position: IVec3, block: BlockId) {
+        self.blocks[position.x as usize][position.y as usize][position.z as usize] = block;
     }
 }
 
@@ -111,7 +134,7 @@ impl<'w, 's> BlockRayCast<'w, 's> {
         while traveled_distance < max_distance {
             let block_pos = current_position.floor().as_ivec3();
             if let Some((block, entity)) = self.get_block(block_pos)
-                && block != 0
+                && block != BlockId(0)
             {
                 let local = (current_position - step) - (block_pos.as_vec3() + Vec3::splat(0.5));
                 let dir = Dir3::new(direction).unwrap_or(Dir3::Y);
@@ -143,7 +166,7 @@ impl<'w, 's> BlockRayCast<'w, 's> {
         None
     }
 
-    fn get_block(&self, position: IVec3) -> Option<(u8, Entity)> {
+    fn get_block(&self, position: IVec3) -> Option<(BlockId, Entity)> {
         let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
         let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
         let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
@@ -163,7 +186,7 @@ impl<'w, 's> BlockRayCast<'w, 's> {
             return Some((block, entity));
         } else {
             // Out of height bounds
-            return Some((0, entity));
+            return Some((BlockId(0), entity));
         }
     }
 }
@@ -176,7 +199,7 @@ pub struct Blocks<'w, 's> {
 }
 
 impl<'w, 's> Blocks<'w, 's> {
-    pub fn set_block(&mut self, position: IVec3, block: u8) -> Result<()> {
+    pub fn set_block(&mut self, position: IVec3, block: BlockId) -> Result<()> {
         let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
         let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
         let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);

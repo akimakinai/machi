@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::terrain::chunk::BlockId;
+
 use super::chunk::{Blocks, HoveredBlock};
 
 pub struct EditPlugin;
@@ -17,11 +19,11 @@ fn on_click(on: On<Pointer<Click>>, hovered: Res<HoveredBlock>, mut blocks: Bloc
 
     match on.event().button {
         PointerButton::Primary => {
-            blocks.set_block(block_pos.0, 0)?;
+            blocks.set_block(block_pos.0, BlockId(0))?;
         }
         PointerButton::Secondary => {
             debug!("Hit pos: {:?}, Hit face: {:?}", block_pos.0, block_pos.1);
-            blocks.set_block(block_pos.0 + block_pos.1.normal(), 1)?;
+            blocks.set_block(block_pos.0 + block_pos.1.normal(), BlockId(1))?;
         }
         _ => {}
     }

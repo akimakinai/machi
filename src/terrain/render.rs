@@ -1,6 +1,8 @@
 use bevy::{asset::RenderAssetUsages, ecs::entity::EntityHashMap, mesh::Indices, prelude::*};
 use mcubes::MarchingCubes;
 
+use crate::terrain::chunk::BlockId;
+
 use super::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkMap, ChunkUnloaded, ChunkUpdated};
 
 pub struct RenderPlugin;
@@ -111,8 +113,9 @@ fn chunk_updated(
                     } else if z >= CHUNK_SIZE as i32 {
                         dxdz.y = 1;
                     }
-                    let block_type = if y < 0 || y >= CHUNK_HEIGHT as i32 {
-                        0
+
+                    let block_id = if y < 0 || y >= CHUNK_HEIGHT as i32 {
+                        BlockId::AIR
                     } else {
                         let neighbor_idx = dxdz_to_idx(dxdz.x, dxdz.y);
                         if let Some(neighbor_chunk) = neighbor_chunks[neighbor_idx] {
@@ -120,10 +123,11 @@ fn chunk_updated(
                             let nz = z - dxdz.y * CHUNK_SIZE as i32;
                             neighbor_chunk.get_block(IVec3::new(nx, y, nz))
                         } else {
-                            0
+                            BlockId::AIR
                         }
                     };
-                    values.push(if block_type == 0 { 0.0 } else { 1.0 });
+
+                    values.push(if block_id.is_smooth() { 1.0 } else { 0.0 });
                 }
             }
         }
