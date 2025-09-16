@@ -4,7 +4,7 @@ use bevy::{
 };
 use mcubes::MarchingCubes;
 
-use crate::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkMap, ChunkUnloaded, ChunkUpdated};
+use super::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkMap, ChunkUnloaded, ChunkUpdated};
 
 pub struct RenderPlugin;
 

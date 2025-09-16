@@ -7,15 +7,13 @@ use bevy::{
 
 use crate::{
     camera_controller::{CameraController, CameraControllerPlugin},
-    chunk::{Chunk, ChunkPlugin, ChunkUpdated},
-    edit::EditPlugin,
-    render::RenderPlugin,
+    terrain::chunk::{Chunk, ChunkPlugin, ChunkUpdated},
+    terrain::edit::EditPlugin,
+    terrain::render::RenderPlugin,
 };
 
 mod camera_controller;
-mod chunk;
-mod edit;
-mod render;
+mod terrain;
 
 fn main() {
     App::new()

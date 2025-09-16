@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::chunk::{Blocks, HoveredBlock};
+use super::chunk::{Blocks, HoveredBlock};
 
 pub struct EditPlugin;
 
