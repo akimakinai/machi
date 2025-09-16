@@ -4,13 +4,15 @@ use bevy::{
 };
 
 use crate::{
-    camera_controller::{CameraController, CameraControllerPlugin},
-    terrain::chunk::{Chunk, ChunkPlugin, ChunkUpdated},
-    terrain::edit::EditPlugin,
-    terrain::render::RenderPlugin,
+    flycam::{FlyCam, FlyCamPlugin},
+    terrain::{
+        chunk::{Chunk, ChunkPlugin, ChunkUpdated},
+        edit::EditPlugin,
+        render::RenderPlugin,
+    },
 };
 
-mod camera_controller;
+mod flycam;
 mod terrain;
 
 fn main() {
@@ -22,7 +24,7 @@ fn main() {
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(EditPlugin)
-        .add_plugins(CameraControllerPlugin)
+        .add_plugins(FlyCamPlugin)
         .add_systems(Startup, startup)
         .run();
 }
@@ -54,10 +56,7 @@ fn startup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(40.0, 30.0, 8.0).looking_at(Vec3::new(8.0, 16.0, 8.0), Vec3::Y),
-        CameraController {
-            mouse_key_cursor_grab: MouseButton::Middle,
-            ..default()
-        },
+        FlyCam,
     ));
 
     commands.spawn((
