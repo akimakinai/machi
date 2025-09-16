@@ -1,7 +1,4 @@
-use bevy::{
-    asset::RenderAssetUsages, ecs::entity::EntityHashMap, mesh::Indices, pbr::wireframe::Wireframe,
-    prelude::*,
-};
+use bevy::{asset::RenderAssetUsages, ecs::entity::EntityHashMap, mesh::Indices, prelude::*};
 use mcubes::MarchingCubes;
 
 use super::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkMap, ChunkUnloaded, ChunkUpdated};
@@ -181,7 +178,6 @@ fn chunk_updated(
             Mesh3d(bvmesh),
             MeshMaterial3d(grass_material.clone()),
             Transform::from_translation(Vec3::splat(-0.5)),
-            Wireframe,
             Name::new(format!(
                 "Chunk ({}, {})",
                 chunk.position.x, chunk.position.y

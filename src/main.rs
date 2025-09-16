@@ -1,8 +1,6 @@
 use bevy::{
     log::{DEFAULT_FILTER, LogPlugin},
-    pbr::wireframe::WireframePlugin,
     prelude::*,
-    render::RenderDebugFlags,
 };
 
 use crate::{
@@ -24,7 +22,6 @@ fn main() {
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(EditPlugin)
-        .add_plugins(WireframePlugin::new(RenderDebugFlags::default()))
         .add_plugins(CameraControllerPlugin)
         .add_systems(Startup, startup)
         .run();
