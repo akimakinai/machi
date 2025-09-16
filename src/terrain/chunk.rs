@@ -1,3 +1,4 @@
+//! Terrain chunks. A chunk is `CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE` blocks in size.
 use bevy::{
     ecs::system::{
         SystemParam,
@@ -19,8 +20,7 @@ impl Plugin for ChunkPlugin {
         app.init_resource::<HoveredBlock>()
             .add_systems(Update, block_hover);
 
-        app.add_observer(update_new_chunks)
-            .add_systems(Update, chunk_gizmo);
+        app.add_systems(Update, chunk_gizmo);
     }
 }
 
@@ -196,38 +196,36 @@ impl<'w, 's> Blocks<'w, 's> {
         let mut chunk = self.chunks.get_mut(chunk_id)?;
         chunk.set_block(IVec3::new(local_x, local_y, local_z), block);
 
-        self.commands.trigger(ChunkUpdated(chunk_id));
+        let mut updated_chunks = vec![chunk_id];
 
         // update neighboring chunks if on edge
         if local_x == 0 {
             if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z)) {
-                self.commands.trigger(ChunkUpdated(neighbor_id));
+                updated_chunks.push(neighbor_id);
             }
         } else if local_x == (CHUNK_SIZE - 1) as i32 {
             if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z)) {
-                self.commands.trigger(ChunkUpdated(neighbor_id));
+                updated_chunks.push(neighbor_id);
             }
         }
         if local_z == 0 {
             if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z - 1)) {
-                self.commands.trigger(ChunkUpdated(neighbor_id));
+                updated_chunks.push(neighbor_id);
             }
         } else if local_z == (CHUNK_SIZE - 1) as i32 {
             if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z + 1)) {
-                self.commands.trigger(ChunkUpdated(neighbor_id));
+                updated_chunks.push(neighbor_id);
             }
         }
+
+        self.commands.trigger(ChunkUpdated(updated_chunks));
 
         Ok(())
     }
 }
 
-#[derive(EntityEvent)]
-pub struct ChunkUpdated(pub Entity);
-
-fn update_new_chunks(added: On<Add, Chunk>, mut commands: Commands) {
-    commands.trigger(ChunkUpdated(added.event().event_target()));
-}
+#[derive(Event)]
+pub struct ChunkUpdated(pub Vec<Entity>);
 
 #[derive(EntityEvent)]
 pub struct ChunkUnloaded(Entity);

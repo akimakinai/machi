@@ -49,11 +49,7 @@ fn startup(mut commands: Commands) {
         }
     }
 
-    // TODO: need to figure out how to manage chunk updates
-    // `On<Add, Chunk>` doesn't work because it can't see neighbors added after it yet
-    for id in ids {
-        commands.trigger(ChunkUpdated(id));
-    }
+    commands.trigger(ChunkUpdated(ids));
 
     commands.spawn((
         Camera3d::default(),
