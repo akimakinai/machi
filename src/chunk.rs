@@ -1,5 +1,3 @@
-use std::f64::consts::E;
-
 use bevy::{
     ecs::system::{
         SystemParam,
@@ -15,7 +13,7 @@ pub struct ChunkPlugin;
 impl Plugin for ChunkPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChunkMap>()
-            .add_systems(Update, update_chunk_map)
+            .add_observer(update_chunk_map)
             .add_observer(remove_chunk_map);
 
         app.init_resource::<HoveredBlock>()
@@ -55,13 +53,10 @@ impl Chunk {
 #[derive(Resource, Default)]
 pub struct ChunkMap(pub HashMap<IVec2, Entity>);
 
-fn update_chunk_map(
-    mut chunk_map: ResMut<ChunkMap>,
-    chunks: Query<(Entity, &Chunk), Added<Chunk>>,
-) {
-    for (entity, chunk) in &chunks {
-        chunk_map.0.insert(chunk.position, entity);
-    }
+fn update_chunk_map(added: On<Add, Chunk>, mut chunk_map: ResMut<ChunkMap>, chunks: Query<&Chunk>) {
+    let entity = added.event().event_target();
+    let chunk = chunks.get(entity).unwrap();
+    chunk_map.0.insert(chunk.position, entity);
 }
 
 fn remove_chunk_map(
@@ -203,12 +198,32 @@ impl<'w, 's> Blocks<'w, 's> {
 
         self.commands.trigger(ChunkUpdated(chunk_id));
 
+        // update neighboring chunks if on edge
+        if local_x == 0 {
+            if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z)) {
+                self.commands.trigger(ChunkUpdated(neighbor_id));
+            }
+        } else if local_x == (CHUNK_SIZE - 1) as i32 {
+            if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z)) {
+                self.commands.trigger(ChunkUpdated(neighbor_id));
+            }
+        }
+        if local_z == 0 {
+            if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z - 1)) {
+                self.commands.trigger(ChunkUpdated(neighbor_id));
+            }
+        } else if local_z == (CHUNK_SIZE - 1) as i32 {
+            if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z + 1)) {
+                self.commands.trigger(ChunkUpdated(neighbor_id));
+            }
+        }
+
         Ok(())
     }
 }
 
 #[derive(EntityEvent)]
-pub struct ChunkUpdated(Entity);
+pub struct ChunkUpdated(pub Entity);
 
 fn update_new_chunks(added: On<Add, Chunk>, mut commands: Commands) {
     commands.trigger(ChunkUpdated(added.event().event_target()));

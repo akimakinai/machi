@@ -1,7 +1,10 @@
-use bevy::{asset::RenderAssetUsages, ecs::entity::EntityHashMap, mesh::Indices, pbr::wireframe::Wireframe, prelude::*};
+use bevy::{
+    asset::RenderAssetUsages, ecs::entity::EntityHashMap, mesh::Indices, pbr::wireframe::Wireframe,
+    prelude::*,
+};
 use mcubes::MarchingCubes;
 
-use crate::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkUnloaded, ChunkUpdated};
+use crate::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkMap, ChunkUnloaded, ChunkUpdated};
 
 pub struct RenderPlugin;
 
@@ -26,6 +29,7 @@ fn chunk_updated(
     on: On<ChunkUpdated>,
     mut commands: Commands,
     chunks: Query<&Chunk>,
+    chunk_map: Res<ChunkMap>,
     mut rendered: ResMut<RenderedChunks>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -33,7 +37,34 @@ fn chunk_updated(
     let chunk_id = on.event().event_target();
     let chunk = chunks.get(chunk_id)?;
 
+    let mut neighbor_chunks = vec![];
+    for dz in -1..=1 {
+        for dx in -1..=1 {
+            if dx == 0 && dz == 0 {
+                neighbor_chunks.push(Some(chunk));
+                continue;
+            }
+            let neighbor_pos = chunk.position + IVec2::new(dx, dz);
+            if let Some(&neighbor_entity) = chunk_map.0.get(&neighbor_pos) {
+                if let Ok(neighbor_chunk) = chunks.get(neighbor_entity) {
+                    neighbor_chunks.push(Some(neighbor_chunk));
+                    continue;
+                }
+            }
+            neighbor_chunks.push(None);
+        }
+    }
+
+    let dxdz_to_idx = |dx: i32, dz: i32| -> usize { ((dz + 1) * 3 + (dx + 1)) as usize };
+
     debug!("Chunk updated: {:?}", chunk.position);
+    debug!(
+        "Neighbor chunks = {:?}",
+        neighbor_chunks
+            .iter()
+            .map(|c| c.map(|cc| cc.position))
+            .collect::<Vec<_>>()
+    );
 
     let mesh_parent = commands
         .spawn((
@@ -74,21 +105,30 @@ fn chunk_updated(
     for z in -1..(CHUNK_SIZE as i32 + 1) {
         for y in -1..(CHUNK_HEIGHT as i32 + 1) {
             for x in -1..(CHUNK_SIZE as i32 + 1) {
-                if x < 0 || x >= CHUNK_SIZE as i32 {
-                    values.push(0.0);
-                    continue;
+                let mut dxdz = IVec2::ZERO;
+                if x < 0 {
+                    dxdz.x = -1;
+                } else if x >= CHUNK_SIZE as i32 {
+                    dxdz.x = 1;
                 }
-                if z < 0 || z >= CHUNK_SIZE as i32 {
-                    values.push(0.0);
-                    continue;
+                if z < 0 {
+                    dxdz.y = -1;
+                } else if z >= CHUNK_SIZE as i32 {
+                    dxdz.y = 1;
                 }
-                if y < 0 || y >= CHUNK_HEIGHT as i32 {
-                    values.push(0.0);
-                    continue;
-                }
-
-                let block_type = chunk.get_block(IVec3::new(x, y, z));
-                values.push(if block_type != 0 { 1.0 } else { 0.0 });
+                let block_type = if y < 0 || y >= CHUNK_HEIGHT as i32 {
+                    0
+                } else {
+                    let neighbor_idx = dxdz_to_idx(dxdz.x, dxdz.y);
+                    if let Some(neighbor_chunk) = neighbor_chunks[neighbor_idx] {
+                        let nx = x - dxdz.x * CHUNK_SIZE as i32;
+                        let nz = z - dxdz.y * CHUNK_SIZE as i32;
+                        neighbor_chunk.get_block(IVec3::new(nx, y, nz))
+                    } else {
+                        0
+                    }
+                };
+                values.push(if block_type == 0 { 0.0 } else { 1.0 });
             }
         }
     }
