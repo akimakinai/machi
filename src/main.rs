@@ -72,5 +72,8 @@ fn startup(mut commands: Commands) {
         )),
     ));
 
-    commands.insert_resource(AmbientLight::default());
+    commands.insert_resource(AmbientLight {
+        brightness: 200.0,
+        ..default()
+    });
 }

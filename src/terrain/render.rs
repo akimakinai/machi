@@ -156,13 +156,16 @@ fn chunk_updated(
 
         for pos in &mcmesh.vertices {
             let position = to_arr(pos.posit);
+            let normal = to_arr(pos.normal);
             positions.push(position);
-            normals.push(to_arr(pos.normal));
+            normals.push(normal);
             uvs.push([0.0, 0.0]);
 
-            let idx = ((pos.posit.x).floor() as usize)
-                + ((pos.posit.y).floor() as usize) * (CHUNK_SIZE + 2)
-                + ((pos.posit.z).floor() as usize) * (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2);
+            let normal = Vec3::from(normal);
+            let position = (Vec3::from(position) - normal * 0.1).round();
+            let idx = (position.x as usize)
+                + (position.y as usize) * (CHUNK_SIZE + 2)
+                + (position.z as usize) * (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2);
             let block_id = block_ids[idx];
 
             colors.push(match block_id {
