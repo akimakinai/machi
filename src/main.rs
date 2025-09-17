@@ -42,7 +42,10 @@ fn startup(mut commands: Commands) {
                         if cx == 0 && cz == 0 && x == 4 && z == 4 && y == 15 {
                             continue;
                         }
-                        chunk.set_block(IVec3::new(x, y, z), BlockId(1));
+                        chunk.set_block(
+                            IVec3::new(x, y, z),
+                            if y >= 14 { BlockId(1) } else { BlockId(2) },
+                        );
                     }
                 }
             }

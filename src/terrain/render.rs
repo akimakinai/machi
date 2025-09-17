@@ -88,15 +88,13 @@ fn chunk_updated(
             );
         }
 
-        // let cube = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
-        // let dirt_material = materials.add(Color::srgb(0.5, 0.25, 0.0));
-        let mut grass_material = StandardMaterial::from(Color::srgb(0.0, 0.5, 0.0));
-        grass_material.perceptual_roughness = 1.0;
-        // grass_material.cull_mode = None;
-        let grass_material = materials.add(grass_material);
-        // let unknown_material = materials.add(Color::srgb(1.0, 0.0, 1.0));
+        let mut base_material = StandardMaterial::from(Color::srgb(1.0, 1.0, 1.0));
+        base_material.perceptual_roughness = 1.0;
+        let base_material = materials.add(base_material);
 
         let mut values = vec![];
+
+        let mut block_ids = vec![];
 
         // TODO: sample outmost layer of neighboring chunks
         for z in -1..(CHUNK_SIZE as i32 + 1) {
@@ -128,6 +126,7 @@ fn chunk_updated(
                     };
 
                     values.push(if block_id.is_smooth() { 1.0 } else { 0.0 });
+                    block_ids.push(block_id);
                 }
             }
         }
@@ -153,11 +152,24 @@ fn chunk_updated(
         let mut positions = vec![];
         let mut normals = vec![];
         let mut uvs = vec![];
+        let mut colors = vec![];
 
         for pos in &mcmesh.vertices {
-            positions.push(to_arr(pos.posit));
+            let position = to_arr(pos.posit);
+            positions.push(position);
             normals.push(to_arr(pos.normal));
             uvs.push([0.0, 0.0]);
+
+            let idx = ((pos.posit.x).floor() as usize)
+                + ((pos.posit.y).floor() as usize) * (CHUNK_SIZE + 2)
+                + ((pos.posit.z).floor() as usize) * (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2);
+            let block_id = block_ids[idx];
+
+            colors.push(match block_id {
+                BlockId(1) => [0.0, 0.5, 0.0, 1.0],
+                BlockId(2) => [0.3, 0.3, 0.3, 1.0],
+                _ => [1.0, 0.0, 1.0, 1.0],
+            });
         }
 
         let indices = mcmesh
@@ -168,9 +180,14 @@ fn chunk_updated(
             .rev()
             .collect::<Vec<_>>();
 
+        for ind in indices.iter() {
+            
+        }
+
         bvmesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
         bvmesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
         bvmesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+        bvmesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
         bvmesh.insert_indices(Indices::U32(indices));
 
         let bvmesh = meshes.add(bvmesh);
@@ -178,7 +195,7 @@ fn chunk_updated(
         commands.entity(mesh_parent).with_children(|parent| {
             parent.spawn((
                 Mesh3d(bvmesh),
-                MeshMaterial3d(grass_material.clone()),
+                MeshMaterial3d(base_material.clone()),
                 Transform::from_translation(Vec3::splat(-0.5)),
                 Name::new(format!(
                     "Chunk ({}, {})",
