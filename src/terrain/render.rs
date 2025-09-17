@@ -180,10 +180,6 @@ fn chunk_updated(
             .rev()
             .collect::<Vec<_>>();
 
-        for ind in indices.iter() {
-            
-        }
-
         bvmesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
         bvmesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
         bvmesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
