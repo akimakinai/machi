@@ -39,7 +39,7 @@ fn startup(mut commands: Commands) {
             for x in 0..16 {
                 for z in 0..16 {
                     for y in 0..16 {
-                        if cx == 0 && cz == 0 && x == 4 && z == 4 && y == 15 {
+                        if cx == 0 && cz == 0 && (x == 4 || x == 2) && z == 4 && y == 15 {
                             continue;
                         }
                         chunk.set_block(
