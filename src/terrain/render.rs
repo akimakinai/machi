@@ -165,14 +165,11 @@ fn chunk_updated(
         let to_arr = |v: lin_alg::f32::Vec3| [v.x, v.y, v.z];
 
         let mut positions = vec![];
-        let mut normals = vec![];
         let mut uvs = vec![];
 
         for pos in &mcmesh.vertices {
             let position = to_arr(pos.posit);
-            let normal = to_arr(pos.normal);
             positions.push(position);
-            normals.push(normal);
             uvs.push([0.0, 0.0]);
         }
 
@@ -185,7 +182,6 @@ fn chunk_updated(
             .collect::<Vec<_>>();
 
         bvmesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-        // bvmesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
         bvmesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
         bvmesh.insert_indices(Indices::U32(indices.clone()));
 
