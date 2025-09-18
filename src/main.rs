@@ -29,7 +29,7 @@ fn main() {
         .run();
 }
 
-fn startup(mut commands: Commands) {
+fn startup(mut commands: Commands, mut updated: MessageWriter<ChunkUpdated>) {
     let mut ids = vec![];
 
     for cx in -1..=1 {
@@ -50,11 +50,15 @@ fn startup(mut commands: Commands) {
                 }
             }
 
+            if cx == 1 && cz == 1 {
+                chunk.set_block(IVec3::new(7, 20, 7), BlockId(65));
+            }
+
             ids.push(commands.spawn(chunk).id());
         }
     }
 
-    commands.trigger(ChunkUpdated(ids));
+    updated.write_batch(ids.into_iter().map(ChunkUpdated));
 
     commands.spawn((
         Camera3d::default(),

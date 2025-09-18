@@ -17,8 +17,11 @@ pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RenderPluginSettings>()
-            .init_resource::<RenderedChunks>()
-            .add_observer(chunk_updated)
+            .init_resource::<RenderChunkMap>()
+            .add_systems(
+                Update,
+                (create_render_chunk, (update_terrain, update_solid)).chain(),
+            )
             .add_observer(chunk_unloaded);
     }
 }
@@ -29,25 +32,61 @@ struct RenderPluginSettings {
 }
 
 #[derive(Resource, Default)]
-struct RenderedChunks(EntityHashMap<RenderedChunk>);
+struct RenderChunkMap(EntityHashMap<RenderChunk>);
 
-struct RenderedChunk {
+struct RenderChunk {
     pub position: IVec2,
-    pub mesh_parent: Entity,
+    pub id: Entity,
 }
 
-fn chunk_updated(
-    on: On<ChunkUpdated>,
+fn create_render_chunk(
+    mut reader: MessageReader<ChunkUpdated>,
+    chunks: Query<&Chunk>,
+    mut commands: Commands,
+    mut rendered: ResMut<RenderChunkMap>,
+) {
+    for &ChunkUpdated(chunk_id) in reader.read() {
+        let chunk = chunks.get(chunk_id).unwrap();
+        debug!("Chunk updated: {:?}", chunk.position);
+
+        let render_chunk = commands
+            .spawn((
+                Transform::from_xyz(
+                    chunk.position.x as f32 * CHUNK_SIZE as f32,
+                    0.0,
+                    chunk.position.y as f32 * CHUNK_SIZE as f32,
+                ),
+                Visibility::Visible,
+            ))
+            .id();
+
+        if let Some(rc) = rendered.0.get_mut(&chunk_id) {
+            commands.entity(rc.id).despawn();
+            rc.id = render_chunk;
+        } else {
+            rendered.0.insert(
+                chunk_id,
+                RenderChunk {
+                    position: chunk.position,
+                    id: render_chunk,
+                },
+            );
+        }
+    }
+}
+
+fn update_terrain(
+    mut reader: MessageReader<ChunkUpdated>,
     mut commands: Commands,
     chunks: Query<&Chunk>,
     chunk_map: Res<ChunkMap>,
-    mut rendered: ResMut<RenderedChunks>,
+    rendered: Res<RenderChunkMap>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
     settings: Res<RenderPluginSettings>,
 ) -> Result<()> {
-    for chunk_id in on.event().0.iter().copied() {
+    for &ChunkUpdated(chunk_id) in reader.read() {
         let chunk = chunks.get(chunk_id)?;
 
         let mut neighbor_chunks = vec![];
@@ -70,7 +109,6 @@ fn chunk_updated(
 
         let dxdz_to_idx = |dx: i32, dz: i32| -> usize { ((dz + 1) * 3 + (dx + 1)) as usize };
 
-        debug!("Chunk updated: {:?}", chunk.position);
         debug!(
             "Neighbor chunks = {:?}",
             neighbor_chunks
@@ -78,30 +116,6 @@ fn chunk_updated(
                 .map(|c| c.map(|cc| cc.position))
                 .collect::<Vec<_>>()
         );
-
-        let mesh_parent = commands
-            .spawn((
-                Transform::from_xyz(
-                    chunk.position.x as f32 * CHUNK_SIZE as f32,
-                    0.0,
-                    chunk.position.y as f32 * CHUNK_SIZE as f32,
-                ),
-                Visibility::Visible,
-            ))
-            .id();
-
-        if let Some(rc) = rendered.0.get_mut(&chunk_id) {
-            commands.entity(rc.mesh_parent).despawn();
-            rc.mesh_parent = mesh_parent;
-        } else {
-            rendered.0.insert(
-                chunk_id,
-                RenderedChunk {
-                    position: chunk.position,
-                    mesh_parent,
-                },
-            );
-        }
 
         let mut base_material = StandardMaterial::from(Color::srgb(1.0, 1.0, 1.0));
         base_material.perceptual_roughness = 1.0;
@@ -140,7 +154,7 @@ fn chunk_updated(
                         }
                     };
 
-                    values.push(if block_id.is_smooth() { 1.0 } else { 0.0 });
+                    values.push(if block_id.is_terrain() { 1.0 } else { 0.0 });
                     block_ids.push(block_id);
                 }
             }
@@ -248,7 +262,9 @@ fn chunk_updated(
 
         let bvmesh = meshes.add(bvmesh);
 
-        commands.entity(mesh_parent).with_children(|parent| {
+        let render_chunk = rendered.0.get(&chunk_id).unwrap().id;
+
+        commands.entity(render_chunk).with_children(|parent| {
             let mut mesh_entity = parent.spawn((
                 Mesh3d(bvmesh),
                 MeshMaterial3d(base_material.clone()),
@@ -311,14 +327,64 @@ fn deduplicate_vertices(mesh: &mut Mesh) {
     mesh.insert_indices(Indices::U32(new_indices));
 }
 
+fn update_solid(
+    mut reader: MessageReader<ChunkUpdated>,
+    chunks: Query<&Chunk>,
+    render_chunks: Res<RenderChunkMap>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cube_mesh: Local<Handle<Mesh>>,
+    // TODO
+    mut cube_material: Local<Handle<StandardMaterial>>,
+) {
+    if *cube_mesh == Handle::default() {
+        let cube = Mesh::from(Cuboid::from_length(1.0));
+        *cube_mesh = meshes.add(cube);
+    }
+    if *cube_material == Handle::default() {
+        let mut material = StandardMaterial::from(Color::srgb(1.0, 0.0, 1.0));
+        material.perceptual_roughness = 1.0;
+        *cube_material = materials.add(material);
+    }
+
+    for &ChunkUpdated(chunk_id) in reader.read() {
+        let chunk = chunks.get(chunk_id).unwrap();
+
+        let render_chunk = render_chunks.0.get(&chunk_id).unwrap().id;
+
+        for z in 0..CHUNK_SIZE as i32 {
+            for y in 0..CHUNK_HEIGHT as i32 {
+                for x in 0..CHUNK_SIZE as i32 {
+                    let block_id = chunk.get_block(IVec3::new(x, y, z));
+                    if !block_id.is_solid() {
+                        continue;
+                    }
+
+                    commands.entity(render_chunk).with_child((
+                        Mesh3d(cube_mesh.clone()),
+                        MeshMaterial3d(cube_material.clone()),
+                        Transform::from_translation(Vec3::new(
+                            x as f32 + 0.5,
+                            y as f32 + 0.5,
+                            z as f32 + 0.5,
+                        )),
+                        Name::new(format!("Solid Block ({}, {}, {})", x, y, z)),
+                    ));
+                }
+            }
+        }
+    }
+}
+
 fn chunk_unloaded(
     on: On<ChunkUnloaded>,
     mut commands: Commands,
-    mut rendered: ResMut<RenderedChunks>,
+    mut rendered: ResMut<RenderChunkMap>,
 ) {
     let chunk_id = on.event().event_target();
     if let Some(rc) = rendered.0.remove(&chunk_id) {
-        commands.entity(rc.mesh_parent).despawn();
+        commands.entity(rc.id).despawn();
         debug!("Chunk unloaded: {:?}", rc.position);
     }
 }

@@ -14,6 +14,7 @@ pub struct ChunkPlugin;
 impl Plugin for ChunkPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChunkMap>()
+            .add_message::<ChunkUpdated>()
             .add_observer(update_chunk_map)
             .add_observer(remove_chunk_map);
 
@@ -35,7 +36,7 @@ impl BlockId {
     pub const AIR: BlockId = BlockId(0);
 
     /// Blocks rendered as smooth surfaces
-    pub const fn is_smooth(self) -> bool {
+    pub const fn is_terrain(self) -> bool {
         self.0 > 0 && self.0 <= 32
     }
 
@@ -45,7 +46,7 @@ impl BlockId {
     }
 
     /// Blocks rendered as cubes
-    pub const fn is_cube(self) -> bool {
+    pub const fn is_solid(self) -> bool {
         self.0 > 64
     }
 }
@@ -195,7 +196,7 @@ impl<'w, 's> BlockRayCast<'w, 's> {
 pub struct Blocks<'w, 's> {
     chunks: Query<'w, 's, Write<Chunk>>,
     chunk_map: Res<'w, ChunkMap>,
-    commands: Commands<'w, 's>,
+    writer: MessageWriter<'w, ChunkUpdated>,
 }
 
 impl<'w, 's> Blocks<'w, 's> {
@@ -241,14 +242,15 @@ impl<'w, 's> Blocks<'w, 's> {
             }
         }
 
-        self.commands.trigger(ChunkUpdated(updated_chunks));
+        self.writer
+            .write_batch(updated_chunks.into_iter().map(ChunkUpdated));
 
         Ok(())
     }
 }
 
-#[derive(Event)]
-pub struct ChunkUpdated(pub Vec<Entity>);
+#[derive(Message)]
+pub struct ChunkUpdated(pub Entity);
 
 #[derive(EntityEvent)]
 pub struct ChunkUnloaded(Entity);
