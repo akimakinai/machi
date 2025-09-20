@@ -51,6 +51,10 @@ fn create_render_chunk(
 
         let render_chunk = commands
             .spawn((
+                Name::new(format!(
+                    "Render Chunk ({}, {})",
+                    chunk.position.x, chunk.position.y
+                )),
                 Transform::from_xyz(
                     chunk.position.x as f32 * CHUNK_SIZE as f32,
                     0.0,
