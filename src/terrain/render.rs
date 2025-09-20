@@ -7,8 +7,9 @@ use bevy::{
     prelude::*,
 };
 use mcubes::MarchingCubes;
+use avian3d::prelude::*;
 
-use crate::terrain::chunk::BlockId;
+use crate::{physics::GameLayer, terrain::chunk::BlockId};
 
 use super::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkMap, ChunkUnloaded, ChunkUpdated};
 
@@ -28,6 +29,7 @@ impl Plugin for RenderPlugin {
 
 #[derive(Resource, Default)]
 struct RenderPluginSettings {
+    /// Enable debug gizmos
     debug: bool,
 }
 
@@ -272,9 +274,12 @@ fn update_terrain(
             let mut mesh_entity = parent.spawn((
                 Mesh3d(bvmesh),
                 MeshMaterial3d(base_material.clone()),
+                RigidBody::Static,
+                ColliderConstructor::TrimeshFromMesh,
+                CollisionLayers::new([GameLayer::Terrain], [GameLayer::Default, GameLayer::Character]),
                 Transform::from_translation(Vec3::splat(-0.5)),
                 Name::new(format!(
-                    "Chunk ({}, {})",
+                    "Render Chunk Mesh ({}, {})",
                     chunk.position.x, chunk.position.y
                 )),
             ));
@@ -328,6 +333,7 @@ fn deduplicate_vertices(mesh: &mut Mesh) {
 
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, new_positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, new_uvs);
+    // TODO: remove unused vetex colors
     mesh.insert_indices(Indices::U32(new_indices));
 }
 

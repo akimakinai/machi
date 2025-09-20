@@ -17,6 +17,7 @@ tracing = { version = "0.1", features = [
     "max_level_debug",
     "release_max_level_warn",
 ] }
+avian3d = { git = "https://github.com/ChristopherBiscardi/avian", branch = "bevy-0.17-temporaries" }
 
 [features]
 default = [
