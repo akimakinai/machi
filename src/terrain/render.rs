@@ -1,3 +1,4 @@
+use avian3d::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
     color::palettes::css::{PURPLE, YELLOW},
@@ -8,7 +9,7 @@ use bevy::{
 };
 use mcubes::MarchingCubes;
 
-use crate::terrain::chunk::BlockId;
+use crate::{physics::GameLayer, terrain::chunk::BlockId};
 
 use super::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkMap, ChunkUnloaded, ChunkUpdated};
 
@@ -28,6 +29,7 @@ impl Plugin for RenderPlugin {
 
 #[derive(Resource, Default)]
 struct RenderPluginSettings {
+    /// Enable debug gizmos
     debug: bool,
 }
 
@@ -51,6 +53,10 @@ fn create_render_chunk(
 
         let render_chunk = commands
             .spawn((
+                Name::new(format!(
+                    "Render Chunk ({}, {})",
+                    chunk.position.x, chunk.position.y
+                )),
                 Transform::from_xyz(
                     chunk.position.x as f32 * CHUNK_SIZE as f32,
                     0.0,
@@ -268,9 +274,15 @@ fn update_terrain(
             let mut mesh_entity = parent.spawn((
                 Mesh3d(bvmesh),
                 MeshMaterial3d(base_material.clone()),
+                RigidBody::Static,
+                ColliderConstructor::TrimeshFromMesh,
+                CollisionLayers::new(
+                    [GameLayer::Terrain],
+                    [GameLayer::Default, GameLayer::Character],
+                ),
                 Transform::from_translation(Vec3::splat(-0.5)),
                 Name::new(format!(
-                    "Chunk ({}, {})",
+                    "Render Chunk Mesh ({}, {})",
                     chunk.position.x, chunk.position.y
                 )),
             ));
@@ -324,6 +336,7 @@ fn deduplicate_vertices(mesh: &mut Mesh) {
 
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, new_positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, new_uvs);
+    // TODO: remove unused vetex colors
     mesh.insert_indices(Indices::U32(new_indices));
 }
 
@@ -364,6 +377,12 @@ fn update_solid(
                     commands.entity(render_chunk).with_child((
                         Mesh3d(cube_mesh.clone()),
                         MeshMaterial3d(cube_material.clone()),
+                        RigidBody::Static,
+                        ColliderConstructor::ConvexHullFromMesh,
+                        CollisionLayers::new(
+                            [GameLayer::Terrain],
+                            [GameLayer::Default, GameLayer::Character],
+                        ),
                         Transform::from_translation(Vec3::new(
                             x as f32 + 0.5,
                             y as f32 + 0.5,
