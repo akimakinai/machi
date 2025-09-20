@@ -5,8 +5,7 @@ use bevy::{
 };
 
 use crate::{
-    character::CharacterController,
-    flycam::{FlyCam, FlyCamPlugin},
+    character::{CharacterController, Player},
     terrain::{
         chunk::{BlockId, Chunk, ChunkPlugin, ChunkUpdated},
         edit::EditPlugin,
@@ -29,7 +28,6 @@ fn main() {
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(EditPlugin)
-        .add_plugins(FlyCamPlugin)
         .add_plugins(character::CharacterPlugin)
         .add_systems(Startup, startup)
         .add_systems(Startup, (spawn_chunk, spawn_player))
@@ -37,12 +35,6 @@ fn main() {
 }
 
 fn startup(mut commands: Commands, mut updated: MessageWriter<ChunkUpdated>) {
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(40.0, 30.0, 8.0).looking_at(Vec3::new(8.0, 16.0, 8.0), Vec3::Y),
-        FlyCam,
-    ));
-
     commands.spawn((
         DirectionalLight { ..default() },
         Transform::from_rotation(Quat::from_euler(
@@ -97,16 +89,29 @@ fn spawn_player(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
         half_length: 1.0,
     };
     let collider = shape.collider();
-    commands.spawn((
-        Name::new("Player"),
-        Mesh3d(meshes.add(Mesh::from(shape))),
-        MeshMaterial3d(Handle::<StandardMaterial>::default()),
-        CharacterController {
-            speed: 1.0,
-            floating_height: 2.0,
-        },
-        Transform::from_translation(Vec3::new(8.0, 20.0, 8.0)),
-        Mass(1.0),
-        collider,
-    ));
+    commands
+        .spawn((
+            Name::new("Player"),
+            // Mesh3d(meshes.add(Mesh::from(shape))),
+            // MeshMaterial3d(Handle::<StandardMaterial>::default()),
+            Friction::new(1.0),
+            CharacterController {
+                speed: 10.0,
+                floating_height: 5.0,
+                shape: Cylinder {
+                    radius: 1.0,
+                    half_height: 1.1,
+                }
+                .collider(),
+            },
+            Transform::from_translation(Vec3::new(8.0, 25.0, 8.0)),
+            Mass(1.0),
+            collider,
+            Player,
+        ))
+        .with_child((
+            Camera3d::default(),
+            // Transform::from_xyz(40.0, 30.0, 8.0).looking_at(Vec3::new(8.0, 16.0, 8.0), Vec3::Y),
+            // FlyCam,
+        ));
 }
