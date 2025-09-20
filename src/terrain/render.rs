@@ -1,3 +1,4 @@
+use avian3d::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
     color::palettes::css::{PURPLE, YELLOW},
@@ -7,7 +8,6 @@ use bevy::{
     prelude::*,
 };
 use mcubes::MarchingCubes;
-use avian3d::prelude::*;
 
 use crate::{physics::GameLayer, terrain::chunk::BlockId};
 
@@ -276,7 +276,10 @@ fn update_terrain(
                 MeshMaterial3d(base_material.clone()),
                 RigidBody::Static,
                 ColliderConstructor::TrimeshFromMesh,
-                CollisionLayers::new([GameLayer::Terrain], [GameLayer::Default, GameLayer::Character]),
+                CollisionLayers::new(
+                    [GameLayer::Terrain],
+                    [GameLayer::Default, GameLayer::Character],
+                ),
                 Transform::from_translation(Vec3::splat(-0.5)),
                 Name::new(format!(
                     "Render Chunk Mesh ({}, {})",
@@ -374,6 +377,12 @@ fn update_solid(
                     commands.entity(render_chunk).with_child((
                         Mesh3d(cube_mesh.clone()),
                         MeshMaterial3d(cube_material.clone()),
+                        RigidBody::Static,
+                        ColliderConstructor::ConvexHullFromMesh,
+                        CollisionLayers::new(
+                            [GameLayer::Terrain],
+                            [GameLayer::Default, GameLayer::Character],
+                        ),
                         Transform::from_translation(Vec3::new(
                             x as f32 + 0.5,
                             y as f32 + 0.5,
