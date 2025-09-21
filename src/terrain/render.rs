@@ -300,7 +300,6 @@ fn update_terrain(
         // Deduplicate vertices to get smooth normals
         deduplicate_vertices(&mut bvmesh);
         bvmesh.compute_normals();
-        bvmesh.generate_tangents().unwrap();
 
         let bv_normal = bvmesh
             .attribute(Mesh::ATTRIBUTE_NORMAL)
