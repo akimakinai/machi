@@ -50,7 +50,6 @@ fn fragment(
 
     pbr_input.is_orthographic = view.clip_from_view[3].w == 1.0;
 
-#ifdef VERTEX_TANGENTS
     let xy_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, mesh.world_position.xy, layer, view.mip_bias).rgb;
     let yz_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, mesh.world_position.yz, layer, view.mip_bias).rgb;
     let zx_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, mesh.world_position.zx, layer, view.mip_bias).rgb;
@@ -60,7 +59,6 @@ fn fragment(
     pbr_input.N = normalize(xy_nt.xyz * blending.z * axis_sign.z +
                             yz_nt.yzx * blending.x * axis_sign.x +
                             zx_nt.zxy * blending.y * axis_sign.y);
-#endif
 
     pbr_input.V = fns::calculate_view(mesh.world_position, pbr_input.is_orthographic);
 
