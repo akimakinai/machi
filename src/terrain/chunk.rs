@@ -184,12 +184,13 @@ impl<'w, 's> BlockRayCast<'w, 's> {
             .chunks
             .get(*self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z))?)
             .ok()?;
+
         if local_y < CHUNK_HEIGHT as i32 {
             let block = chunk.get_block(IVec3::new(local_x, local_y, local_z));
-            return Some((block, entity));
+            Some((block, entity))
         } else {
             // Out of height bounds
-            return Some((BlockId(0), entity));
+            Some((BlockId(0), entity))
         }
     }
 }
@@ -225,23 +226,24 @@ impl<'w, 's> Blocks<'w, 's> {
         let mut updated_chunks = vec![chunk_id];
 
         // update neighboring chunks if on edge
-        if local_x == 0 {
-            if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z)) {
-                updated_chunks.push(neighbor_id);
-            }
-        } else if local_x == (CHUNK_SIZE - 1) as i32 {
-            if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z)) {
-                updated_chunks.push(neighbor_id);
-            }
+        if local_x == 0
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z))
+        {
+            updated_chunks.push(neighbor_id);
+        } else if local_x == (CHUNK_SIZE - 1) as i32
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z))
+        {
+            updated_chunks.push(neighbor_id);
         }
-        if local_z == 0 {
-            if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z - 1)) {
-                updated_chunks.push(neighbor_id);
-            }
-        } else if local_z == (CHUNK_SIZE - 1) as i32 {
-            if let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z + 1)) {
-                updated_chunks.push(neighbor_id);
-            }
+
+        if local_z == 0
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z - 1))
+        {
+            updated_chunks.push(neighbor_id);
+        } else if local_z == (CHUNK_SIZE - 1) as i32
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z + 1))
+        {
+            updated_chunks.push(neighbor_id);
         }
 
         self.writer

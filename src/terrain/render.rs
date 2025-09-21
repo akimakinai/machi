@@ -199,11 +199,11 @@ fn update_terrain(
                     continue;
                 }
                 let neighbor_pos = chunk.position + IVec2::new(dx, dz);
-                if let Some(&neighbor_entity) = chunk_map.0.get(&neighbor_pos) {
-                    if let Ok(neighbor_chunk) = chunks.get(neighbor_entity) {
-                        neighbor_chunks.push(Some(neighbor_chunk));
-                        continue;
-                    }
+                if let Some(&neighbor_entity) = chunk_map.0.get(&neighbor_pos)
+                    && let Ok(neighbor_chunk) = chunks.get(neighbor_entity)
+                {
+                    neighbor_chunks.push(Some(neighbor_chunk));
+                    continue;
                 }
                 neighbor_chunks.push(None);
             }

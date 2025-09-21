@@ -40,7 +40,7 @@ fn pause_dim_on(mut commands: Commands) {
             order: 1,
             ..default()
         },
-        Camera2d::default(),
+        Camera2d,
         RenderLayers::from_layers(&[1]),
     ));
     commands.spawn((
