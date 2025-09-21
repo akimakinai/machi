@@ -2,10 +2,12 @@ use avian3d::prelude::*;
 use bevy::{
     log::{DEFAULT_FILTER, LogPlugin},
     prelude::*,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
 use crate::{
-    character::{CharacterController, Player},
+    character::{CharacterController, CharacterPlugin, Player},
+    pause::{Pause, PausePlugin},
     terrain::{
         chunk::{BlockId, Chunk, ChunkPlugin, ChunkUpdated},
         edit::EditPlugin,
@@ -14,7 +16,8 @@ use crate::{
 };
 
 mod character;
-mod flycam;
+// mod flycam;
+mod pause;
 mod physics;
 mod terrain;
 
@@ -25,16 +28,18 @@ fn main() {
             ..default()
         }))
         .add_plugins((PhysicsPlugins::default(), PhysicsDebugPlugin::default()))
+        .add_plugins(PausePlugin)
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(EditPlugin)
-        .add_plugins(character::CharacterPlugin)
+        .add_plugins(CharacterPlugin)
         .add_systems(Startup, startup)
         .add_systems(Startup, (spawn_chunk, spawn_player))
+        .add_systems(Update, mouse_grabbing)
         .run();
 }
 
-fn startup(mut commands: Commands, mut updated: MessageWriter<ChunkUpdated>) {
+fn startup(mut commands: Commands) {
     commands.spawn((
         DirectionalLight { ..default() },
         Transform::from_rotation(Quat::from_euler(
@@ -83,7 +88,11 @@ fn spawn_chunk(mut commands: Commands, mut updated: MessageWriter<ChunkUpdated>)
     updated.write_batch(ids.into_iter().map(ChunkUpdated));
 }
 
-fn spawn_player(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+fn spawn_player(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     let shape = Capsule3d {
         radius: 0.5,
         half_length: 1.0,
@@ -92,8 +101,8 @@ fn spawn_player(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     commands
         .spawn((
             Name::new("Player"),
-            // Mesh3d(meshes.add(Mesh::from(shape))),
-            // MeshMaterial3d(Handle::<StandardMaterial>::default()),
+            Mesh3d(meshes.add(Mesh::from(shape))),
+            MeshMaterial3d(materials.add(StandardMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.0)))),
             Friction::new(1.0),
             CharacterController {
                 speed: 10.0,
@@ -114,4 +123,20 @@ fn spawn_player(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
             // Transform::from_xyz(40.0, 30.0, 8.0).looking_at(Vec3::new(8.0, 16.0, 8.0), Vec3::Y),
             // FlyCam,
         ));
+}
+
+fn mouse_grabbing(
+    mut cursor_opt: Query<(&mut CursorOptions, &Window), With<PrimaryWindow>>,
+    paused: Res<State<Pause>>,
+) -> Result<()> {
+    let (cursor_opt, window) = cursor_opt.single_mut()?;
+    let mut grab_mode = cursor_opt.map_unchanged(|o| &mut o.grab_mode);
+
+    if paused.0 || !window.focused {
+        grab_mode.set_if_neq(CursorGrabMode::None);
+    } else {
+        grab_mode.set_if_neq(CursorGrabMode::Locked);
+    }
+
+    return Ok(());
 }

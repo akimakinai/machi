@@ -1,15 +1,16 @@
 use avian3d::prelude::{forces::ForcesItem, *};
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 
-use crate::physics::GameLayer;
+use crate::{pause::PausableSystems, physics::GameLayer};
 
 pub struct CharacterPlugin;
 
 impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(character_controller_added)
-            .add_systems(FixedUpdate, character_movement)
-            .add_systems(FixedUpdate, player_control);
+        app.add_observer(character_controller_added).add_systems(
+            FixedUpdate,
+            (character_movement, player_control).in_set(PausableSystems),
+        );
     }
 }
 
