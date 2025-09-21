@@ -1,14 +1,14 @@
 use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind::FUCHSIA_400, prelude::*};
 
-use crate::character::CharacterController;
+use crate::character::{CharacterController, Player};
 
 pub struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_enemy)
-            .add_systems(Update, enemy_behavior);
+            .add_systems(FixedUpdate, enemy_behavior);
     }
 }
 
@@ -46,4 +46,19 @@ fn spawn_enemy(
     ));
 }
 
-fn enemy_behavior() {}
+fn enemy_behavior(
+    mut transforms: ParamSet<(
+        Query<&mut Transform, With<Enemy>>,
+        Query<&Transform, With<Player>>,
+    )>,
+    time: Res<Time>,
+) {
+    let Ok(player_transform) = transforms.p1().single().cloned() else {
+        return;
+    };
+
+    for mut enemy_transform in &mut transforms.p0() {
+        let direction = (player_transform.translation - enemy_transform.translation).normalize();
+        enemy_transform.translation += direction * 2.0 * time.delta_secs();
+    }
+}
