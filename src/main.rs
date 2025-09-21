@@ -7,6 +7,7 @@ use bevy::{
 
 use crate::{
     character::{CharacterController, CharacterPlugin, Player},
+    enemy::EnemyPlugin,
     pause::{Pause, PausePlugin},
     terrain::{
         chunk::{BlockId, Chunk, ChunkPlugin, ChunkUpdated},
@@ -17,6 +18,7 @@ use crate::{
 
 mod character;
 // mod flycam;
+mod enemy;
 mod pause;
 mod physics;
 mod terrain;
@@ -33,6 +35,7 @@ fn main() {
         .add_plugins(RenderPlugin)
         .add_plugins(EditPlugin)
         .add_plugins(CharacterPlugin)
+        .add_plugins(EnemyPlugin)
         .add_systems(Startup, startup)
         .add_systems(Startup, (spawn_chunk, spawn_player))
         .add_systems(Update, mouse_grabbing)
@@ -88,6 +91,9 @@ fn spawn_chunk(mut commands: Commands, mut updated: MessageWriter<ChunkUpdated>)
     updated.write_batch(ids.into_iter().map(ChunkUpdated));
 }
 
+#[derive(Component)]
+pub struct PlayerCamera;
+
 fn spawn_player(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -120,8 +126,8 @@ fn spawn_player(
         ))
         .with_child((
             Camera3d::default(),
-            // Transform::from_xyz(40.0, 30.0, 8.0).looking_at(Vec3::new(8.0, 16.0, 8.0), Vec3::Y),
-            // FlyCam,
+            Transform::from_scale(Vec3::splat(2.0)),
+            PlayerCamera,
         ));
 }
 
@@ -129,14 +135,21 @@ fn mouse_grabbing(
     mut cursor_opt: Query<(&mut CursorOptions, &Window), With<PrimaryWindow>>,
     paused: Res<State<Pause>>,
 ) -> Result<()> {
-    let (cursor_opt, window) = cursor_opt.single_mut()?;
-    let mut grab_mode = cursor_opt.map_unchanged(|o| &mut o.grab_mode);
+    let (mut cursor_opt, window) = cursor_opt.single_mut()?;
 
-    if paused.0 || !window.focused {
-        grab_mode.set_if_neq(CursorGrabMode::None);
+    let (grab_mode, visible) = if paused.0 || !window.focused {
+        (CursorGrabMode::None, true)
     } else {
-        grab_mode.set_if_neq(CursorGrabMode::Locked);
-    }
+        (CursorGrabMode::Locked, false)
+    };
 
-    return Ok(());
+    cursor_opt
+        .reborrow()
+        .map_unchanged(|o| &mut o.grab_mode)
+        .set_if_neq(grab_mode);
+    cursor_opt
+        .map_unchanged(|o| &mut o.visible)
+        .set_if_neq(visible);
+
+    Ok(())
 }

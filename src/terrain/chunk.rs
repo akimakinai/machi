@@ -9,6 +9,8 @@ use bevy::{
     prelude::*,
 };
 
+use crate::PlayerCamera;
+
 pub struct ChunkPlugin;
 
 impl Plugin for ChunkPlugin {
@@ -259,55 +261,58 @@ pub struct ChunkUnloaded(Entity);
 pub struct HoveredBlock(pub Option<(IVec3, HitFace)>);
 
 fn block_hover(
-    ray_map: Res<bevy::picking::backend::ray::RayMap>,
+    camera: Query<&GlobalTransform, With<PlayerCamera>>,
     block_raycast: BlockRayCast,
     mut gizmos: Gizmos,
     mut hovered: ResMut<HoveredBlock>,
 ) -> Result<()> {
     let mut new_hovered = None;
 
-    for (_id, ray) in ray_map.iter() {
-        if let Some((block_pos, face, _entity)) =
-            block_raycast.ray_cast(ray.origin, ray.direction.as_vec3(), 100.0)
-        {
-            const GIZMO_COLOR: Color = Color::Srgba(bevy::color::palettes::css::YELLOW);
-            let coord = block_pos.as_vec3();
-            new_hovered = Some((block_pos, face));
+    let camera_transform = camera.single()?.compute_transform();
 
-            gizmos.axes(Transform::from_translation(coord + Vec3::splat(0.5)), 2.0);
+    let ray_origin = camera_transform.translation;
+    let ray_direction = camera_transform.forward();
 
-            gizmos.linestrip(
-                [
-                    coord + Vec3::new(0.0, 0.0, 0.0),
-                    coord + Vec3::new(1.0, 0.0, 0.0),
-                    coord + Vec3::new(1.0, 0.0, 1.0),
-                    coord + Vec3::new(0.0, 0.0, 1.0),
-                    coord + Vec3::new(0.0, 0.0, 0.0),
-                    coord + Vec3::new(0.0, 1.0, 0.0),
-                    coord + Vec3::new(0.0, 1.0, 0.0),
-                    coord + Vec3::new(1.0, 1.0, 0.0),
-                    coord + Vec3::new(1.0, 1.0, 1.0),
-                    coord + Vec3::new(0.0, 1.0, 1.0),
-                    coord + Vec3::new(0.0, 1.0, 0.0),
-                ],
-                GIZMO_COLOR,
-            );
-            gizmos.line(
+    if let Some((block_pos, face, _entity)) =
+        block_raycast.ray_cast(ray_origin, ray_direction.as_vec3(), 100.0)
+    {
+        const GIZMO_COLOR: Color = Color::Srgba(bevy::color::palettes::css::YELLOW);
+        let coord = block_pos.as_vec3();
+        new_hovered = Some((block_pos, face));
+
+        gizmos.axes(Transform::from_translation(coord + Vec3::splat(0.5)), 2.0);
+
+        gizmos.linestrip(
+            [
+                coord + Vec3::new(0.0, 0.0, 0.0),
                 coord + Vec3::new(1.0, 0.0, 0.0),
-                coord + Vec3::new(1.0, 1.0, 0.0),
-                GIZMO_COLOR,
-            );
-            gizmos.line(
                 coord + Vec3::new(1.0, 0.0, 1.0),
-                coord + Vec3::new(1.0, 1.0, 1.0),
-                GIZMO_COLOR,
-            );
-            gizmos.line(
                 coord + Vec3::new(0.0, 0.0, 1.0),
+                coord + Vec3::new(0.0, 0.0, 0.0),
+                coord + Vec3::new(0.0, 1.0, 0.0),
+                coord + Vec3::new(0.0, 1.0, 0.0),
+                coord + Vec3::new(1.0, 1.0, 0.0),
+                coord + Vec3::new(1.0, 1.0, 1.0),
                 coord + Vec3::new(0.0, 1.0, 1.0),
-                GIZMO_COLOR,
-            );
-        }
+                coord + Vec3::new(0.0, 1.0, 0.0),
+            ],
+            GIZMO_COLOR,
+        );
+        gizmos.line(
+            coord + Vec3::new(1.0, 0.0, 0.0),
+            coord + Vec3::new(1.0, 1.0, 0.0),
+            GIZMO_COLOR,
+        );
+        gizmos.line(
+            coord + Vec3::new(1.0, 0.0, 1.0),
+            coord + Vec3::new(1.0, 1.0, 1.0),
+            GIZMO_COLOR,
+        );
+        gizmos.line(
+            coord + Vec3::new(0.0, 0.0, 1.0),
+            coord + Vec3::new(0.0, 1.0, 1.0),
+            GIZMO_COLOR,
+        );
     }
 
     hovered.set_if_neq(HoveredBlock(new_hovered));
