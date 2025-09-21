@@ -1,11 +1,14 @@
 use avian3d::prelude::*;
 use bevy::{
-    asset::RenderAssetUsages,
+    asset::{RenderAssetUsages, uuid_handle},
     color::palettes::css::{PURPLE, YELLOW},
     ecs::entity::EntityHashMap,
+    image::ImageAddressMode,
     mesh::{Indices, VertexAttributeValues},
     platform::collections::HashMap,
     prelude::*,
+    render::render_resource::AsBindGroup,
+    shader::ShaderRef,
 };
 use mcubes::MarchingCubes;
 
@@ -19,6 +22,9 @@ impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RenderPluginSettings>()
             .init_resource::<RenderChunkMap>()
+            .add_plugins(MaterialPlugin::<ArrayTextureMaterial>::default())
+            .add_systems(Startup, setup_terrain_texture)
+            .add_systems(Update, create_array_texture)
             .add_systems(
                 Update,
                 (create_render_chunk, (update_terrain, update_solid)).chain(),
@@ -81,6 +87,96 @@ fn create_render_chunk(
     }
 }
 
+const TERRAIN_SHADER_PATH: &str = "shaders/terrain_texture.wgsl";
+
+#[derive(Resource)]
+struct TerrainTexture {
+    array_generated: bool,
+    array_texture: Handle<Image>,
+    array_normal: Handle<Image>,
+    material_handle: Handle<ArrayTextureMaterial>,
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct ArrayTextureMaterial {
+    #[texture(0, dimension = "2d_array")]
+    #[sampler(1)]
+    array_texture: Handle<Image>,
+    #[texture(2, dimension = "2d_array")]
+    #[sampler(3)]
+    array_normal: Handle<Image>,
+}
+
+impl Material for ArrayTextureMaterial {
+    fn fragment_shader() -> ShaderRef {
+        TERRAIN_SHADER_PATH.into()
+    }
+}
+
+fn setup_terrain_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.insert_resource(TerrainTexture {
+        array_generated: false,
+        array_texture: asset_server.load("textures/array_texture.png"),
+        array_normal: asset_server.load("textures/normal_map.png"),
+        material_handle: uuid_handle!("1fe9417f-ecee-42dd-a4cc-37af36e7933b"),
+    });
+}
+
+fn create_array_texture(
+    mut terrain_texture: ResMut<TerrainTexture>,
+    asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<ArrayTextureMaterial>>,
+) -> Result<()> {
+    if terrain_texture.array_generated {
+        return Ok(());
+    }
+    if !asset_server
+        .get_load_state(&terrain_texture.array_texture)
+        .is_some_and(|st| st.is_loaded())
+    {
+        return Ok(());
+    }
+
+    if !asset_server
+        .get_load_state(&terrain_texture.array_normal)
+        .is_some_and(|st| st.is_loaded())
+    {
+        return Ok(());
+    }
+
+    let mut process = |handle: &Handle<Image>| {
+        let image = images
+            .get_mut(handle)
+            .expect("Image should have been loaded");
+
+        // Create a new array texture asset from the loaded texture.
+        let array_layers = 4;
+        image.reinterpret_stacked_2d_as_array(array_layers);
+
+        let desc = image.sampler.get_or_init_descriptor();
+        desc.address_mode_u = ImageAddressMode::Repeat;
+        desc.address_mode_v = ImageAddressMode::Repeat;
+    };
+
+    process(&terrain_texture.array_texture);
+    process(&terrain_texture.array_normal);
+
+    materials.insert(
+        terrain_texture.material_handle.id(),
+        ArrayTextureMaterial {
+            array_texture: terrain_texture.array_texture.clone(),
+            array_normal: terrain_texture.array_normal.clone(),
+        },
+    )?;
+
+    terrain_texture.array_generated = true;
+
+    debug!("Array texture created");
+
+    Ok(())
+}
+
 fn update_terrain(
     mut reader: MessageReader<ChunkUpdated>,
     mut commands: Commands,
@@ -88,8 +184,8 @@ fn update_terrain(
     chunk_map: Res<ChunkMap>,
     rendered: Res<RenderChunkMap>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
+    terrain_texture: Res<TerrainTexture>,
     settings: Res<RenderPluginSettings>,
 ) -> Result<()> {
     for &ChunkUpdated(chunk_id) in reader.read() {
@@ -123,15 +219,10 @@ fn update_terrain(
                 .collect::<Vec<_>>()
         );
 
-        let mut base_material = StandardMaterial::from(Color::srgb(1.0, 1.0, 1.0));
-        base_material.perceptual_roughness = 1.0;
-        let base_material = materials.add(base_material);
-
         let mut values = vec![];
 
         let mut block_ids = vec![];
 
-        // TODO: sample outmost layer of neighboring chunks
         for z in -1..(CHUNK_SIZE as i32 + 1) {
             for y in -1..(CHUNK_HEIGHT as i32 + 1) {
                 for x in -1..(CHUNK_SIZE as i32 + 1) {
@@ -209,6 +300,7 @@ fn update_terrain(
         // Deduplicate vertices to get smooth normals
         deduplicate_vertices(&mut bvmesh);
         bvmesh.compute_normals();
+        bvmesh.generate_tangents().unwrap();
 
         let bv_normal = bvmesh
             .attribute(Mesh::ATTRIBUTE_NORMAL)
@@ -264,7 +356,7 @@ fn update_terrain(
             );
         }
 
-        bvmesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+        // bvmesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
 
         let bvmesh = meshes.add(bvmesh);
 
@@ -273,7 +365,7 @@ fn update_terrain(
         commands.entity(render_chunk).with_children(|parent| {
             let mut mesh_entity = parent.spawn((
                 Mesh3d(bvmesh),
-                MeshMaterial3d(base_material.clone()),
+                MeshMaterial3d(terrain_texture.material_handle.clone()),
                 RigidBody::Static,
                 ColliderConstructor::TrimeshFromMesh,
                 CollisionLayers::new(
@@ -336,7 +428,6 @@ fn deduplicate_vertices(mesh: &mut Mesh) {
 
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, new_positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, new_uvs);
-    // TODO: remove unused vetex colors
     mesh.insert_indices(Indices::U32(new_indices));
 }
 
