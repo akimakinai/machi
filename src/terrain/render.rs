@@ -312,7 +312,7 @@ fn update_terrain(
             .as_float3()
             .unwrap();
 
-        let mut colors = vec![[1.0, 0.0, 1.0, 1.0]; bv_position.len()];
+        let mut colors = vec![[0.0, 0.0, 1.0, 0.0]; bv_position.len()];
 
         let mut gizmo = GizmoAsset::default();
 
@@ -326,8 +326,8 @@ fn update_terrain(
             let block_id = block_ids[idx];
 
             let color = match block_id {
-                BlockId(1) => [0.0, 0.5, 0.0, 1.0],
-                BlockId(2) => [0.3, 0.3, 0.3, 1.0],
+                BlockId(1) => [1.0, 0.0, 0.0, 0.0],
+                BlockId(2) => [0.0, 0.1, 0.0, 0.0],
                 _ => [1.0, 0.0, 1.0, 1.0],
             };
             colors[index] = color;
@@ -355,7 +355,7 @@ fn update_terrain(
             );
         }
 
-        // bvmesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+        bvmesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
 
         let bvmesh = meshes.add(bvmesh);
 

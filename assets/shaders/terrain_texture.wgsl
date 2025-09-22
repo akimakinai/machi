@@ -18,7 +18,7 @@ fn fragment(
     @builtin(front_facing) is_front: bool,
     mesh: VertexOutput,
 ) -> @location(0) vec4<f32> {
-    let layer = (i32(mesh.world_position.x) + i32(mesh.world_position.z)) & 0x3;
+    let layer = get_max_component_index(mesh.color);
 
     // Prepare a 'processed' StandardMaterial by sampling all textures to resolve
     // the material members
@@ -63,4 +63,17 @@ fn fragment(
     pbr_input.V = fns::calculate_view(mesh.world_position, pbr_input.is_orthographic);
 
     return tone_mapping(fns::apply_pbr_lighting(pbr_input), view.color_grading);
+}
+
+fn get_max_component_index(v: vec4<f32>) -> u32 {
+    if v.x > v.y && v.x > v.z && v.x > v.w {
+        return 0u;
+    }
+    if v.y > v.x && v.y > v.z && v.y > v.w {
+        return 1u;
+    }
+    if v.z > v.x && v.z > v.y && v.z > v.w {
+        return 2u;
+    }
+    return 3u;
 }

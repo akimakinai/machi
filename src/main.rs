@@ -79,7 +79,7 @@ fn spawn_chunk(mut commands: Commands, mut updated: MessageWriter<ChunkUpdated>)
                         }
                         chunk.set_block(
                             IVec3::new(x, y, z),
-                            if y >= 14 { BlockId(1) } else { BlockId(2) },
+                            if y >= 15 { BlockId(1) } else { BlockId(2) },
                         );
                     }
                 }
