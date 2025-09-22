@@ -1,7 +1,7 @@
 use avian3d::prelude::{forces::ForcesItem, *};
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 
-use crate::{pause::PausableSystems, physics::GameLayer};
+use crate::{PlayerCamera, pause::PausableSystems, physics::GameLayer};
 
 pub struct CharacterPlugin;
 
@@ -73,42 +73,44 @@ pub struct Player;
 fn player_control(
     mouse: Res<AccumulatedMouseMotion>,
     kb: Res<ButtonInput<KeyCode>>,
-    mut controllers: Query<
-        (&CharacterController, &mut Transform, &mut LinearVelocity),
-        With<Player>,
-    >,
+    mut controllers: Query<(&CharacterController, &mut LinearVelocity), With<Player>>,
+    mut player_camera: Query<&mut Transform, With<PlayerCamera>>,
     time: Res<Time>,
-) {
-    for (cc, mut transform, mut velocity) in &mut controllers {
-        let mut rotation = transform.rotation.to_euler(EulerRot::YXZ);
-        rotation.0 += -mouse.delta.x * 0.5 * time.delta_secs();
-        rotation.1 = (rotation.1 + -mouse.delta.y * 0.5 * time.delta_secs()).clamp(
-            -std::f32::consts::FRAC_PI_2 + 0.01,
-            std::f32::consts::FRAC_PI_2 - 0.01,
-        );
-        transform.rotation = Quat::from_euler(EulerRot::YXZ, rotation.0, rotation.1, 0.0);
+) -> Result<()> {
+    let mut camera_transform = player_camera.single_mut()?;
 
-        let mut direction = Vec3::ZERO;
-        if kb.pressed(KeyCode::KeyW) {
-            direction += transform.forward().as_vec3();
-        }
-        if kb.pressed(KeyCode::KeyS) {
-            direction += transform.back().as_vec3();
-        }
-        if kb.pressed(KeyCode::KeyA) {
-            direction += transform.left().as_vec3();
-        }
-        if kb.pressed(KeyCode::KeyD) {
-            direction += transform.right().as_vec3();
-        }
-        if direction == Vec3::ZERO {
-            // FIXME: setting velocity to exact zero causes panic in Avian
-            if velocity.0.xz().length_squared() > 0.01 {
-                velocity.0 *= Vec3::new(0.01, 1.0, 0.01);
-            }
-            continue;
-        }
-        let direction = direction.normalize();
-        velocity.0 = (direction * cc.speed).with_y(velocity.0.y);
+    let mut rotation = camera_transform.rotation.to_euler(EulerRot::YXZ);
+    rotation.0 += -mouse.delta.x * 0.5 * time.delta_secs();
+    rotation.1 = (rotation.1 + -mouse.delta.y * 0.5 * time.delta_secs()).clamp(
+        -std::f32::consts::FRAC_PI_2 + 0.01,
+        std::f32::consts::FRAC_PI_2 - 0.01,
+    );
+    camera_transform.rotation = Quat::from_euler(EulerRot::YXZ, rotation.0, rotation.1, 0.0);
+
+    let (cc, mut velocity) = controllers.single_mut()?;
+    let mut direction = Vec3::ZERO;
+    if kb.pressed(KeyCode::KeyW) {
+        direction += camera_transform.forward().as_vec3();
     }
+    if kb.pressed(KeyCode::KeyS) {
+        direction += camera_transform.back().as_vec3();
+    }
+    if kb.pressed(KeyCode::KeyA) {
+        direction += camera_transform.left().as_vec3();
+    }
+    if kb.pressed(KeyCode::KeyD) {
+        direction += camera_transform.right().as_vec3();
+    }
+
+    if direction == Vec3::ZERO {
+        // FIXME: setting velocity to exact zero causes panic in Avian
+        if velocity.0.xz().length_squared() > 0.01 {
+            velocity.0 *= Vec3::new(0.01, 1.0, 0.01);
+        }
+        return Ok(());
+    }
+    let direction = direction.normalize();
+    velocity.0 = (direction * cc.speed).with_y(velocity.0.y);
+
+    Ok(())
 }

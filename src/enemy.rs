@@ -1,7 +1,10 @@
 use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind::FUCHSIA_400, prelude::*};
 
-use crate::character::{CharacterController, Player};
+use crate::{
+    character::{CharacterController, Player},
+    physics::GameLayer,
+};
 
 pub struct EnemyPlugin;
 
@@ -43,6 +46,7 @@ fn spawn_enemy(
             .collider(),
         },
         Transform::from_translation(Vec3::new(15.0, 20.0, 5.0)),
+        CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain]),
     ));
 }
 

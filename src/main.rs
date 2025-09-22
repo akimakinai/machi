@@ -9,6 +9,7 @@ use crate::{
     character::{CharacterController, CharacterPlugin, Player},
     enemy::EnemyPlugin,
     pause::{Pause, PausePlugin},
+    physics::GameLayer,
     terrain::{
         chunk::{BlockId, Chunk, ChunkPlugin, ChunkUpdated},
         edit::EditPlugin,
@@ -36,6 +37,10 @@ fn main() {
         .add_plugins(EditPlugin)
         .add_plugins(CharacterPlugin)
         .add_plugins(EnemyPlugin)
+        .configure_sets(
+            FixedPostUpdate,
+            PhysicsSet::StepSimulation.run_if(in_state(Pause(false))),
+        )
         .add_systems(Startup, startup)
         .add_systems(Startup, (spawn_chunk, spawn_player))
         .add_systems(Update, mouse_grabbing)
@@ -122,6 +127,7 @@ fn spawn_player(
             Transform::from_translation(Vec3::new(8.0, 25.0, 8.0)),
             Mass(1.0),
             collider,
+            CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain]),
             Player,
         ))
         .with_child((
