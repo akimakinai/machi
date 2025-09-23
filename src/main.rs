@@ -8,10 +8,7 @@ use tracing_subscriber::Layer;
 
 use crate::{
     character::{CharacterController, CharacterPlugin, Player},
-    dev_util::{
-        DevUtilPlugin,
-        log_window::{LogWindowLayer, LogWindowPlugin},
-    },
+    dev_util::{DevUtilPlugin, log_window::LogWindowLayer},
     enemy::EnemyPlugin,
     inventory::{Inventory, ItemStack},
     pause::{Pause, PausePlugin},
@@ -38,12 +35,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(LogPlugin {
             filter: format!("{},{}=debug", DEFAULT_FILTER, env!("CARGO_PKG_NAME")),
-            fmt_layer: |_app| {
-                // FIXME: is there better way to tee the logs?
-                let default_fmt_layer =
-                    tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr);
-                Some(Box::new(LogWindowLayer.and_then(default_fmt_layer)) as _)
-            },
+            custom_layer: |_app| Some(LogWindowLayer.boxed()),
             ..default()
         }))
         .add_plugins((PhysicsPlugins::default(), PhysicsDebugPlugin::default()))

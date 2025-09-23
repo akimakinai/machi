@@ -4,10 +4,81 @@ use bevy::{
     color::palettes::css,
     ecs::{query::QueryData, system::lifetimeless::Read},
     prelude::*,
-    ui_widgets::{ControlOrientation, CoreScrollbarThumb, Scrollbar},
+    ui_widgets::{
+        ControlOrientation, CoreScrollbarDragState, CoreScrollbarThumb, Scrollbar, ScrollbarPlugin,
+    },
 };
 use tracing::Subscriber;
 use tracing_subscriber::{Layer, layer::Context, registry::LookupSpan};
+
+pub struct LogWindowPlugin;
+
+impl Plugin for LogWindowPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(ScrollbarPlugin)
+            .init_resource::<LogTextId>()
+            .add_systems(Startup, setup_log_window)
+            .add_systems(
+                Update,
+                (
+                    process_log_messages,
+                    scroll_to_bottom,
+                    detect_scrollbar_drag,
+                ),
+            );
+    }
+}
+
+#[derive(Component)]
+#[require(Node)]
+struct LogWindowRoot {
+    max_messages: Option<usize>,
+}
+
+#[derive(Component)]
+#[require(Node)]
+struct LogWindowMessageArea {
+    keep_bottom: bool,
+}
+
+#[derive(Component)]
+struct LogText(usize);
+
+#[derive(Resource, Default)]
+struct LogTextId(usize);
+
+fn setup_log_window(mut commands: Commands) {
+    commands
+        .spawn((
+            Name::new("Log Window"),
+            LogWindowRoot { max_messages: None },
+            Node {
+                width: Val::Percent(80.0),
+                height: Val::Percent(10.0),
+                position_type: PositionType::Absolute,
+                bottom: Val::Percent(0.0),
+                left: Val::Percent(0.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+        ))
+        .with_children(|root| {
+            const SCROLLBAR_WIDTH: f32 = 16.0;
+            let target = root
+                .spawn((
+                    LogWindowMessageArea { keep_bottom: true },
+                    Node {
+                        padding: UiRect::all(Val::Px(4.0)),
+                        overflow: Overflow::scroll_y(),
+                        flex_direction: FlexDirection::Column,
+                        scrollbar_width: SCROLLBAR_WIDTH,
+                        ..default()
+                    },
+                ))
+                .id();
+            root.spawn(make_scrollbar(target, SCROLLBAR_WIDTH));
+        });
+}
 
 fn make_scrollbar(target: Entity, width: f32) -> impl Bundle {
     (
@@ -34,65 +105,6 @@ fn make_scrollbar(target: Entity, width: f32) -> impl Bundle {
             },
         ),],
     )
-}
-
-pub struct LogWindowPlugin;
-
-impl Plugin for LogWindowPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<LogTextId>()
-            .add_systems(Startup, setup_log_window)
-            .add_systems(Update, (process_log_messages, scroll_to_bottom));
-    }
-}
-
-#[derive(Component)]
-#[require(Node)]
-struct LogWindowRoot {
-    max_messages: usize,
-}
-
-#[derive(Component)]
-#[require(Node)]
-struct LogWindowMessageArea;
-
-#[derive(Component)]
-struct LogText(usize);
-
-#[derive(Resource, Default)]
-struct LogTextId(usize);
-
-fn setup_log_window(mut commands: Commands) {
-    commands
-        .spawn((
-            Name::new("Log Window"),
-            LogWindowRoot { max_messages: 10 },
-            Node {
-                width: Val::Percent(80.0),
-                height: Val::Percent(10.0),
-                position_type: PositionType::Absolute,
-                bottom: Val::Percent(0.0),
-                left: Val::Percent(0.0),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
-        ))
-        .with_children(|root| {
-            const SCROLLBAR_WIDTH: f32 = 16.0;
-            let target = root
-                .spawn((
-                    LogWindowMessageArea,
-                    Node {
-                        padding: UiRect::all(Val::Px(4.0)),
-                        overflow: Overflow::scroll_y(),
-                        flex_direction: FlexDirection::Column,
-                        scrollbar_width: SCROLLBAR_WIDTH,
-                        ..default()
-                    },
-                ))
-                .id();
-            root.spawn(make_scrollbar(target, SCROLLBAR_WIDTH));
-        });
 }
 
 #[derive(QueryData)]
@@ -157,29 +169,38 @@ impl IsClippedItem<'_, '_> {
 
 fn scroll_to_bottom(
     mut commands: Commands,
-    mut area: Query<
-        (&ComputedNode, &mut ScrollPosition, &ChildOf, &Children),
-        With<LogWindowMessageArea>,
-    >,
+    mut area: Query<(
+        &LogWindowMessageArea,
+        &ComputedNode,
+        &mut ScrollPosition,
+        &ChildOf,
+        &Children,
+    )>,
     log_window: Query<&LogWindowRoot>,
     texts: Query<&LogText, With<Text>>,
     is_clipped: Query<IsClipped>,
     cur_text_id: Res<LogTextId>,
 ) {
     // based on update_uinode_geometry_recursive in bevy_ui
-    for (node, mut scroll_pos, child_of, children) in &mut area {
+    for (area, node, mut scroll_pos, child_of, children) in &mut area {
+        if !area.keep_bottom {
+            continue;
+        }
+
         let log_window = log_window.get(child_of.parent()).unwrap();
 
         let mut decreased_content_size = Vec2::ZERO;
 
-        for child in children.iter() {
-            if let Ok(LogText(log_text_id)) = texts.get(child)
-                && cur_text_id.0 - log_text_id > log_window.max_messages
-                && let Ok(is_clipped) = is_clipped.get(child)
-                && is_clipped.is_clipped()
-            {
-                decreased_content_size += is_clipped.node.size;
-                commands.entity(child).despawn();
+        if let Some(max_messages) = log_window.max_messages {
+            for child in children.iter() {
+                if let Ok(LogText(log_text_id)) = texts.get(child)
+                    && cur_text_id.0 - log_text_id > max_messages
+                    && let Ok(is_clipped) = is_clipped.get(child)
+                    && is_clipped.is_clipped()
+                {
+                    decreased_content_size += is_clipped.node.size;
+                    commands.entity(child).despawn();
+                }
             }
         }
 
@@ -190,6 +211,38 @@ fn scroll_to_bottom(
             (content_size - layout_size + node.scrollbar_size).max(Vec2::ZERO);
 
         scroll_pos.0 = scroll_pos.0.with_y(max_possible_offset.y);
+    }
+}
+
+fn detect_scrollbar_drag(
+    mut area: Query<(&mut LogWindowMessageArea, &ScrollPosition, &ComputedNode)>,
+    scrollbars: Query<(&Scrollbar, &Children)>,
+    scrollbar_state: Query<&CoreScrollbarDragState>,
+) {
+    const SCROLL_BOTTOM_THRESHOLD: f32 = 0.1;
+
+    for (scrollbar, children) in &scrollbars {
+        let Ok((mut area, scroll_pos, node)) = area.get_mut(scrollbar.target) else {
+            continue;
+        };
+        let mut dragging = false;
+        for child in children.iter() {
+            if let Ok(state) = scrollbar_state.get(child) {
+                if state.dragging {
+                    dragging = true;
+                    break;
+                }
+            }
+        }
+        if dragging {
+            area.keep_bottom = false;
+        } else {
+            // set keep bottom if scrolled to bottom
+            let diff = (node.content_size.y - node.size.y) - scroll_pos.0.y;
+            if diff < SCROLL_BOTTOM_THRESHOLD {
+                area.keep_bottom = true;
+            }
+        }
     }
 }
 
