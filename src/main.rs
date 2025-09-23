@@ -4,10 +4,13 @@ use bevy::{
     prelude::*,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
+use tracing_subscriber::Layer;
 
 use crate::{
     character::{CharacterController, CharacterPlugin, Player},
+    dev_util::log_window::{LogWindowLayer, LogWindowPlugin},
     enemy::EnemyPlugin,
+    inventory::{Inventory, ItemStack},
     pause::{Pause, PausePlugin},
     physics::GameLayer,
     terrain::{
@@ -15,19 +18,29 @@ use crate::{
         edit::EditPlugin,
         render::RenderPlugin,
     },
+    ui::UiPlugin,
 };
 
 mod character;
 // mod flycam;
+mod dev_util;
 mod enemy;
+mod inventory;
 mod pause;
 mod physics;
 mod terrain;
+mod ui;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(LogPlugin {
             filter: format!("{},{}=debug", DEFAULT_FILTER, env!("CARGO_PKG_NAME")),
+            fmt_layer: |_app| {
+                // FIXME: is there better way to tee the logs?
+                let default_fmt_layer =
+                    tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr);
+                Some(Box::new(LogWindowLayer.and_then(default_fmt_layer)) as _)
+            },
             ..default()
         }))
         .add_plugins((PhysicsPlugins::default(), PhysicsDebugPlugin::default()))
@@ -37,6 +50,8 @@ fn main() {
         .add_plugins(EditPlugin)
         .add_plugins(CharacterPlugin)
         .add_plugins(EnemyPlugin)
+        .add_plugins(UiPlugin)
+        .add_plugins(LogWindowPlugin)
         .configure_sets(
             FixedPostUpdate,
             PhysicsSet::StepSimulation.run_if(in_state(Pause(false))),
@@ -109,6 +124,7 @@ fn spawn_player(
         half_length: 1.0,
     };
     let collider = shape.collider();
+    let mut inventory_id = None;
     commands
         .spawn((
             Name::new("Player"),
@@ -130,11 +146,30 @@ fn spawn_player(
             CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain]),
             Player,
         ))
-        .with_child((
-            Camera3d::default(),
-            Transform::from_scale(Vec3::splat(2.0)),
-            PlayerCamera,
-        ));
+        .with_children(|c| {
+            c.spawn((
+                Camera3d::default(),
+                Transform::from_scale(Vec3::splat(2.0)),
+                PlayerCamera,
+            ));
+            let mut slots = vec![None; 32];
+            slots[0] = ItemStack {
+                item_id: 1,
+                quantity: 64,
+            }
+            .into();
+            slots[1] = ItemStack {
+                item_id: 2,
+                quantity: 32,
+            }
+            .into();
+            inventory_id = c
+                .spawn((Name::new("Player Inventory Data"), Inventory { slots }))
+                .id()
+                .into();
+        });
+
+    commands.run_system_cached_with(ui::inventory::build_inventory_root, inventory_id.unwrap());
 }
 
 fn mouse_grabbing(
