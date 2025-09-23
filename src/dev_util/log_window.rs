@@ -7,47 +7,67 @@ use bevy::{
 use tracing::Subscriber;
 use tracing_subscriber::{Layer, layer::Context, registry::LookupSpan};
 
+use crate::dev_util::scrollbar::{Scrollbar, ScrollbarKind};
+
 pub struct LogWindowPlugin;
 
 impl Plugin for LogWindowPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_log_window)
+        app.init_resource::<LogTextId>()
+            .add_systems(Startup, setup_log_window)
             .add_systems(Update, (process_log_messages, scroll_to_bottom));
     }
 }
 
 #[derive(Component)]
 #[require(Node)]
-struct LogWindowRoot;
+struct LogWindowRoot {
+    max_messages: usize,
+}
 
 #[derive(Component)]
 #[require(Node)]
 struct LogWindowMessageArea;
 
+#[derive(Component)]
+struct LogText(usize);
+
+#[derive(Resource, Default)]
+struct LogTextId(usize);
+
 fn setup_log_window(mut commands: Commands) {
     commands
         .spawn((
             Name::new("Log Window"),
-            LogWindowRoot,
+            LogWindowRoot { max_messages: 1000 },
             Node {
                 width: Val::Percent(80.0),
                 height: Val::Percent(10.0),
                 position_type: PositionType::Absolute,
-                bottom: Val::Px(0.0),
-                left: Val::Px(0.0),
+                bottom: Val::Percent(0.0),
+                left: Val::Percent(0.0),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
         ))
-        .with_child((
-            LogWindowMessageArea,
-            Node {
-                padding: UiRect::all(Val::Px(4.0)),
-                overflow: Overflow::scroll_y(),
-                flex_direction: FlexDirection::Column,
-                ..default()
-            },
-        ));
+        .with_children(|root| {
+            let target = root
+                .spawn((
+                    LogWindowMessageArea,
+                    Node {
+                        padding: UiRect::all(Val::Px(4.0)),
+                        overflow: Overflow::scroll_y(),
+                        flex_direction: FlexDirection::Column,
+                        scrollbar_width: 16.0,
+                        ..default()
+                    },
+                ))
+                .id();
+            root.spawn(Scrollbar {
+                target,
+                kind: ScrollbarKind::Vertical,
+            });
+        });
 }
 
 #[derive(QueryData)]
@@ -112,15 +132,25 @@ impl IsClippedItem<'_, '_> {
 
 fn scroll_to_bottom(
     mut commands: Commands,
-    mut area: Query<(&ComputedNode, &mut ScrollPosition, &Children), With<LogWindowMessageArea>>,
+    mut area: Query<
+        (&ComputedNode, &mut ScrollPosition, &ChildOf, &Children),
+        With<LogWindowMessageArea>,
+    >,
+    log_window: Query<&LogWindowRoot>,
+    texts: Query<&LogText, With<Text>>,
     is_clipped: Query<IsClipped>,
+    cur_text_id: Res<LogTextId>,
 ) {
     // based on update_uinode_geometry_recursive in bevy_ui
-    for (node, mut scroll_pos, children) in &mut area {
+    for (node, mut scroll_pos, child_of, children) in &mut area {
+        let log_window = log_window.get(child_of.parent()).unwrap();
+
         let mut decreased_content_size = Vec2::ZERO;
 
         for child in children.iter() {
-            if let Ok(is_clipped) = is_clipped.get(child)
+            if let Ok(LogText(log_text_id)) = texts.get(child)
+                && cur_text_id.0 - log_text_id > log_window.max_messages
+                && let Ok(is_clipped) = is_clipped.get(child)
                 && is_clipped.is_clipped()
             {
                 decreased_content_size += is_clipped.node.size;
@@ -199,6 +229,7 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for LogWindowLayer {
 fn process_log_messages(
     mut commands: Commands,
     message_area: Query<Entity, With<LogWindowMessageArea>>,
+    mut text_id: ResMut<LogTextId>,
 ) {
     let mut messages = PENDING_MESSAGES.lock().unwrap();
     if messages.is_empty() {
@@ -210,12 +241,14 @@ fn process_log_messages(
             LogWindowMessage::Add(text) => {
                 for id in &message_area {
                     commands.entity(id).with_child((
+                        LogText(text_id.0),
                         Text(text.clone()),
                         TextFont {
                             font_size: 8.0,
                             ..default()
                         },
                     ));
+                    text_id.0 += 1;
                 }
             }
         }

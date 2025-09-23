@@ -8,7 +8,10 @@ use tracing_subscriber::Layer;
 
 use crate::{
     character::{CharacterController, CharacterPlugin, Player},
-    dev_util::log_window::{LogWindowLayer, LogWindowPlugin},
+    dev_util::{
+        DevUtilPlugin,
+        log_window::{LogWindowLayer, LogWindowPlugin},
+    },
     enemy::EnemyPlugin,
     inventory::{Inventory, ItemStack},
     pause::{Pause, PausePlugin},
@@ -51,7 +54,7 @@ fn main() {
         .add_plugins(CharacterPlugin)
         .add_plugins(EnemyPlugin)
         .add_plugins(UiPlugin)
-        .add_plugins(LogWindowPlugin)
+        .add_plugins(DevUtilPlugin)
         .configure_sets(
             FixedPostUpdate,
             PhysicsSet::StepSimulation.run_if(in_state(Pause(false))),
