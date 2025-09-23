@@ -13,33 +13,37 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(2) var my_array_normal: texture_2d_array<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var my_array_normal_sampler: sampler;
 
+fn sample_color(layer: u32, pos: vec3<f32>, tri_w: vec3<f32>) -> vec4<f32> {
+    // Triplanar texture mapping
+    // https://qiita.com/edo_m18/items/c8995fe91778895c875e
+    // https://ssr-maguro.hatenablog.com/entry/2020/01/22/192000
+    let xy = textureSampleBias(my_array_texture, my_array_texture_sampler, pos.xy, layer, view.mip_bias);
+    let yz = textureSampleBias(my_array_texture, my_array_texture_sampler, pos.yz, layer, view.mip_bias);
+    let zx = textureSampleBias(my_array_texture, my_array_texture_sampler, pos.zx, layer, view.mip_bias);
+    return xy * tri_w.z + yz * tri_w.x + zx * tri_w.y;
+}
+
+fn sample_normal(layer: u32, pos: vec3<f32>, tri_w: vec3<f32>, axis_s: vec3<f32>) -> vec3<f32> {
+    // https://bgolus.medium.com/normal-mapping-for-a-triplanar-shader-10bf39dca05a
+    let xy_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, pos.xy, layer, view.mip_bias).rgb;
+    let yz_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, pos.yz, layer, view.mip_bias).rgb;
+    let zx_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, pos.zx, layer, view.mip_bias).rgb;
+    return xy_nt.xyz * tri_w.z * axis_s.z +
+           yz_nt.yzx * tri_w.x * axis_s.x +
+           zx_nt.zxy * tri_w.y * axis_s.y;
+}
+
 @fragment
 fn fragment(
     @builtin(front_facing) is_front: bool,
     mesh: VertexOutput,
 ) -> @location(0) vec4<f32> {
-    let layer = get_max_component_index(mesh.color);
+    var weights = pow(normalize(mesh.color), vec4(1.5));
 
     // Prepare a 'processed' StandardMaterial by sampling all textures to resolve
     // the material members
     var pbr_input: PbrInput = pbr_input_new();
-
-    // Tri-planar mapping based on:
-    // https://qiita.com/edo_m18/items/c8995fe91778895c875e
-    // https://ssr-maguro.hatenablog.com/entry/2020/01/22/192000
-    var blending: vec3<f32> = normalize(abs(mesh.world_normal));
-
-    var xy_tex = textureSampleBias(my_array_texture, my_array_texture_sampler, mesh.world_position.xy, layer, view.mip_bias);
-    var yz_tex = textureSampleBias(my_array_texture, my_array_texture_sampler, mesh.world_position.yz, layer, view.mip_bias);
-    var zx_tex = textureSampleBias(my_array_texture, my_array_texture_sampler, mesh.world_position.zx, layer, view.mip_bias);
-
-    pbr_input.material.base_color = xy_tex * blending.z + yz_tex * blending.x + zx_tex * blending.y;
-// #ifdef VERTEX_COLORS
-//     pbr_input.material.base_color = pbr_input.material.base_color * mesh.color;
-// #endif
-
     let double_sided = (pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT) != 0u;
-
     pbr_input.frag_coord = mesh.position;
     pbr_input.world_position = mesh.world_position;
     pbr_input.world_normal = fns::prepare_world_normal(
@@ -47,33 +51,44 @@ fn fragment(
         double_sided,
         is_front,
     );
-
     pbr_input.is_orthographic = view.clip_from_view[3].w == 1.0;
 
-    let xy_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, mesh.world_position.xy, layer, view.mip_bias).rgb;
-    let yz_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, mesh.world_position.yz, layer, view.mip_bias).rgb;
-    let zx_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, mesh.world_position.zx, layer, view.mip_bias).rgb;
-
-    // https://bgolus.medium.com/normal-mapping-for-a-triplanar-shader-10bf39dca05a
+    let tri_weights: vec3<f32> = normalize(abs(mesh.world_normal));
     let axis_sign = sign(mesh.world_normal);
-    pbr_input.N = normalize(xy_nt.xyz * blending.z * axis_sign.z +
-                            yz_nt.yzx * blending.x * axis_sign.x +
-                            zx_nt.zxy * blending.y * axis_sign.y);
 
+    var accum_color: vec4<f32> = vec4<f32>(0.0);
+    var accum_normal: vec3<f32> = vec3<f32>(0.0);
+
+    let eps = 0.0001;
+
+    if (weights.x > eps) {
+        let c = sample_color(0u, mesh.world_position.xyz, tri_weights);
+        accum_color += c * weights.x;
+        let n = sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign);
+        accum_normal += n * weights.x;
+    }
+    if (weights.y > eps) {
+        let c = sample_color(1u, mesh.world_position.xyz, tri_weights);
+        accum_color += c * weights.y;
+        let n = sample_normal(1u, mesh.world_position.xyz, tri_weights, axis_sign);
+        accum_normal += n * weights.y;
+    }
+    if (weights.z > eps) {
+        let c = sample_color(2u, mesh.world_position.xyz, tri_weights);
+        accum_color += c * weights.z;
+        let n = sample_normal(2u, mesh.world_position.xyz, tri_weights, axis_sign);
+        accum_normal += n * weights.z;
+    }
+    if (weights.w > eps) {
+        let c = sample_color(3u, mesh.world_position.xyz, tri_weights);
+        accum_color += c * weights.w;
+        let n = sample_normal(3u, mesh.world_position.xyz, tri_weights, axis_sign);
+        accum_normal += n * weights.w;
+    }
+
+    pbr_input.material.base_color = accum_color;
+    pbr_input.N = normalize(accum_normal);
     pbr_input.V = fns::calculate_view(mesh.world_position, pbr_input.is_orthographic);
 
     return tone_mapping(fns::apply_pbr_lighting(pbr_input), view.color_grading);
-}
-
-fn get_max_component_index(v: vec4<f32>) -> u32 {
-    if v.x > v.y && v.x > v.z && v.x > v.w {
-        return 0u;
-    }
-    if v.y > v.x && v.y > v.z && v.y > v.w {
-        return 1u;
-    }
-    if v.z > v.x && v.z > v.y && v.z > v.w {
-        return 2u;
-    }
-    return 3u;
 }
