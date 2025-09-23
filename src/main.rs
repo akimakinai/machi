@@ -176,14 +176,16 @@ fn spawn_player(
 }
 
 fn mouse_grabbing(
-    mut cursor_opt: Query<(&mut CursorOptions, &Window), With<PrimaryWindow>>,
+    mut cursor_opt: Query<(&mut CursorOptions, &mut Window), With<PrimaryWindow>>,
     paused: Res<State<Pause>>,
 ) -> Result<()> {
-    let (mut cursor_opt, window) = cursor_opt.single_mut()?;
+    let (mut cursor_opt, mut window) = cursor_opt.single_mut()?;
 
     let (grab_mode, visible) = if paused.0 || !window.focused {
         (CursorGrabMode::None, true)
     } else {
+        let pos = Vec2::new(window.width() / 2.0, window.height() / 2.0);
+        window.set_cursor_position(Some(pos));
         (CursorGrabMode::Locked, false)
     };
 

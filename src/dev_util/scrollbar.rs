@@ -12,12 +12,8 @@ impl Plugin for ScrollbarPlugin {
 #[derive(Component)]
 #[require(Node {
     position_type: PositionType::Absolute,
-        // right: Val::Px(0.0),
-        // top: Val::Px(0.0),
-        // width: Val::Px(16.0),
-        // height: Val::Percent(100.0),
     ..default()
-}, BackgroundColor(Color::srgb(0.5, 0.5, 0.5)))]
+}, BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.5)))]
 pub struct Scrollbar {
     pub target: Entity,
     pub kind: ScrollbarKind,
@@ -30,10 +26,7 @@ pub enum ScrollbarKind {
 }
 
 #[derive(Component)]
-#[require(Node {
-    position_type: PositionType::Absolute,
-    ..default()
-}, BackgroundColor(Color::srgb(1.0, 1.0, 1.0)))]
+#[require(Node)]
 struct ScrollbarHandle;
 
 fn spawn_handle(on: On<Add, Scrollbar>, scrollbars: Query<&Scrollbar>, mut commands: Commands) {
@@ -44,8 +37,10 @@ fn spawn_handle(on: On<Add, Scrollbar>, scrollbars: Query<&Scrollbar>, mut comma
 
     let mut node = Node {
         position_type: PositionType::Absolute,
+        border: UiRect::all(Val::Px(2.0)),
         ..default()
     };
+
     match scrollbar.kind {
         ScrollbarKind::Vertical => {
             node.width = percent(100.0);
@@ -55,9 +50,13 @@ fn spawn_handle(on: On<Add, Scrollbar>, scrollbars: Query<&Scrollbar>, mut comma
         }
     }
 
-    commands
-        .entity(on.event_target())
-        .with_child((ScrollbarHandle, node));
+    commands.entity(on.event_target()).with_child((
+        ScrollbarHandle,
+        BackgroundColor(Color::srgb(1.0, 1.0, 1.0)),
+        BorderColor::from(Color::srgb(0.0, 0.0, 0.0)),
+        BorderRadius::MAX,
+        node,
+    ));
 }
 
 fn update_scrollbar(

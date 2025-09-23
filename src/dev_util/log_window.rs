@@ -1,13 +1,40 @@
 use std::{fmt::Write as _, sync::LazyLock};
 
 use bevy::{
+    color::palettes::css,
     ecs::{query::QueryData, system::lifetimeless::Read},
     prelude::*,
+    ui_widgets::{ControlOrientation, CoreScrollbarThumb, Scrollbar},
 };
 use tracing::Subscriber;
 use tracing_subscriber::{Layer, layer::Context, registry::LookupSpan};
 
-use crate::dev_util::scrollbar::{Scrollbar, ScrollbarKind};
+fn make_scrollbar(target: Entity, width: f32) -> impl Bundle {
+    (
+        Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(0.0),
+            top: Val::Px(0.0),
+            height: Val::Percent(100.0),
+            min_width: Val::Px(width),
+            ..default()
+        },
+        Scrollbar::new(target, ControlOrientation::Vertical, 20.0),
+        BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.5)),
+        children![(
+            CoreScrollbarThumb,
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.5)),
+            BorderColor::from(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+            BorderRadius::MAX,
+            Node {
+                position_type: PositionType::Absolute,
+                border: UiRect::all(Val::Px(2.0)),
+                width: Val::Percent(100.0),
+                ..default()
+            },
+        ),],
+    )
+}
 
 pub struct LogWindowPlugin;
 
@@ -39,7 +66,7 @@ fn setup_log_window(mut commands: Commands) {
     commands
         .spawn((
             Name::new("Log Window"),
-            LogWindowRoot { max_messages: 1000 },
+            LogWindowRoot { max_messages: 10 },
             Node {
                 width: Val::Percent(80.0),
                 height: Val::Percent(10.0),
@@ -51,6 +78,7 @@ fn setup_log_window(mut commands: Commands) {
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
         ))
         .with_children(|root| {
+            const SCROLLBAR_WIDTH: f32 = 16.0;
             let target = root
                 .spawn((
                     LogWindowMessageArea,
@@ -58,15 +86,12 @@ fn setup_log_window(mut commands: Commands) {
                         padding: UiRect::all(Val::Px(4.0)),
                         overflow: Overflow::scroll_y(),
                         flex_direction: FlexDirection::Column,
-                        scrollbar_width: 16.0,
+                        scrollbar_width: SCROLLBAR_WIDTH,
                         ..default()
                     },
                 ))
                 .id();
-            root.spawn(Scrollbar {
-                target,
-                kind: ScrollbarKind::Vertical,
-            });
+            root.spawn(make_scrollbar(target, SCROLLBAR_WIDTH));
         });
 }
 
@@ -170,7 +195,11 @@ fn scroll_to_bottom(
 
 #[derive(Message)]
 enum LogWindowMessage {
-    Add(String),
+    Add {
+        level: String,
+        origin: String,
+        text: String,
+    },
 }
 
 static PENDING_MESSAGES: LazyLock<std::sync::Mutex<Vec<LogWindowMessage>>> =
@@ -219,10 +248,11 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for LogWindowLayer {
         PENDING_MESSAGES
             .lock()
             .unwrap()
-            .push(LogWindowMessage::Add(format!(
-                "{} {} {}",
-                level, origin, recorder,
-            )));
+            .push(LogWindowMessage::Add {
+                level: level.to_string(),
+                origin,
+                text: recorder.to_string(),
+            });
     }
 }
 
@@ -238,15 +268,38 @@ fn process_log_messages(
 
     for message in messages.drain(..) {
         match message {
-            LogWindowMessage::Add(text) => {
+            LogWindowMessage::Add {
+                level,
+                origin,
+                text,
+            } => {
+                let level_color = Color::from(match level.as_str() {
+                    "TRACE" => css::LIGHT_GRAY,
+                    "DEBUG" => css::SKY_BLUE,
+                    "INFO" => css::GREEN,
+                    "WARN" => css::YELLOW,
+                    "ERROR" => css::RED,
+                    _ => css::WHITE,
+                });
+                let font = TextFont {
+                    font_size: 8.0,
+                    ..default()
+                };
                 for id in &message_area {
                     commands.entity(id).with_child((
                         LogText(text_id.0),
-                        Text(text.clone()),
-                        TextFont {
-                            font_size: 8.0,
-                            ..default()
-                        },
+                        Text::default(),
+                        children![
+                            (
+                                TextSpan::new(level.clone()),
+                                TextColor(level_color),
+                                font.clone()
+                            ),
+                            (TextSpan::new(" "), font.clone()),
+                            (TextSpan::new(origin.clone()), font.clone()),
+                            (TextSpan::new(" "), font.clone()),
+                            (TextSpan::new(text.clone()), font.clone()),
+                        ],
                     ));
                     text_id.0 += 1;
                 }

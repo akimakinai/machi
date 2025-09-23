@@ -5,7 +5,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-bevy = { version = "0.17.0-rc.1", features = ["wayland"] }
+bevy = { version = "0.17.0-rc.2", features = ["wayland", "experimental_bevy_ui_widgets"] }
 lin_alg = "1.3.6"
 # Compile low-severity logs out of native builds for performance.
 log = { version = "0.4", features = [
@@ -19,6 +19,8 @@ tracing = { version = "0.1", features = [
     "release_max_level_warn",
 ] }
 avian3d = { git = "https://github.com/ChristopherBiscardi/avian", branch = "bevy-0.17-temporaries" }
+# temp (avian depends on derive_more=1 without features, causing compilation error)
+derive_more = { version = "1", features = ["from"] }
 tracing-subscriber = "0.3.20"
 
 [features]
