@@ -11,6 +11,7 @@ use crate::{
     dev_util::{DevUtilPlugin, log_window::LogWindowLayer},
     enemy::EnemyPlugin,
     inventory::{Inventory, ItemStack},
+    object::ObjectPlugin,
     pause::{Pause, PausePlugin},
     physics::GameLayer,
     terrain::{
@@ -26,6 +27,7 @@ mod character;
 mod dev_util;
 mod enemy;
 mod inventory;
+mod object;
 mod pause;
 mod physics;
 mod terrain;
@@ -45,6 +47,7 @@ fn main() {
         .add_plugins(EditPlugin)
         .add_plugins(CharacterPlugin)
         .add_plugins(EnemyPlugin)
+        .add_plugins(ObjectPlugin)
         .add_plugins(UiPlugin)
         .add_plugins(DevUtilPlugin)
         .configure_sets(

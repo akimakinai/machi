@@ -1,6 +1,11 @@
-use bevy::prelude::*;
+use avian3d::prelude::LinearVelocity;
+use bevy::{prelude::*, window::PrimaryWindow};
 
-use crate::terrain::chunk::BlockId;
+use crate::{
+    inventory::{ItemId, ItemStack},
+    object::item_stack::{ItemStackObjAssets, create_item_stack_obj},
+    terrain::chunk::BlockId,
+};
 
 use super::chunk::{Blocks, HoveredBlock};
 
@@ -8,18 +13,51 @@ pub struct EditPlugin;
 
 impl Plugin for EditPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(on_click);
+        app.add_systems(Startup, startup);
     }
 }
 
-fn on_click(on: On<Pointer<Click>>, hovered: Res<HoveredBlock>, mut blocks: Blocks) -> Result<()> {
+fn startup(
+    mut commands: Commands,
+    primary_window: Query<Entity, With<PrimaryWindow>>,
+) -> Result<()> {
+    commands.entity(primary_window.single()?).observe(on_click);
+    Ok(())
+}
+
+fn on_click(
+    on: On<Pointer<Click>>,
+    hovered: Res<HoveredBlock>,
+    mut blocks: Blocks,
+    mut commands: Commands,
+    item_assets: Res<ItemStackObjAssets>,
+) -> Result<()> {
     let Some(block_pos) = hovered.0 else {
         return Ok(());
     };
 
     match on.event().button {
         PointerButton::Primary => {
+            let get_id = blocks.get_block(block_pos.0)?;
             blocks.set_block(block_pos.0, BlockId(0))?;
+            let random_vel = LinearVelocity(Vec3::new(
+                (rand::random::<f32>() - 0.5) * 2.0,
+                rand::random::<f32>() * 2.0,
+                (rand::random::<f32>() - 0.5) * 2.0,
+            ));
+            commands.spawn(create_item_stack_obj(
+                ItemStack {
+                    // FIXME
+                    item_id: get_id.0 as ItemId,
+                    quantity: 1,
+                },
+                &item_assets,
+                (
+                    Transform::from_translation(block_pos.0.as_vec3() + Vec3::splat(0.5)),
+                    random_vel,
+                ),
+            )?);
+            debug!("Spawned item stack object");
         }
         PointerButton::Secondary => {
             debug!("Hit pos: {:?}, Hit face: {:?}", block_pos.0, block_pos.1);

@@ -203,6 +203,32 @@ pub struct Blocks<'w, 's> {
 }
 
 impl<'w, 's> Blocks<'w, 's> {
+    pub fn get_block(&self, position: IVec3) -> Result<BlockId> {
+        let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
+        let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
+        let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
+        let local_y = position.y;
+        let local_z = position.z.rem_euclid(CHUNK_SIZE as i32);
+
+        if local_y < 0 {
+            return Ok(BlockId(0));
+        }
+
+        let chunk_id = *self
+            .chunk_map
+            .0
+            .get(&IVec2::new(chunk_x, chunk_z))
+            .ok_or(BevyError::from("Chunk not found"))?;
+
+        let chunk = self.chunks.get(chunk_id)?;
+        if local_y < CHUNK_HEIGHT as i32 {
+            Ok(chunk.get_block(IVec3::new(local_x, local_y, local_z)))
+        } else {
+            // Out of height bounds
+            Ok(BlockId(0))
+        }
+    }
+
     pub fn set_block(&mut self, position: IVec3, block: BlockId) -> Result<()> {
         let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
         let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);

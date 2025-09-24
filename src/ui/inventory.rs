@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::inventory::{Inventory, ItemStack};
+use crate::inventory::Inventory;
 
 pub struct InventoryUiPlugin;
 

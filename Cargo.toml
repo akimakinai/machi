@@ -22,6 +22,7 @@ avian3d = { git = "https://github.com/ChristopherBiscardi/avian", branch = "bevy
 # temp (avian depends on derive_more=1 without features, causing compilation error)
 derive_more = { version = "1", features = ["from"] }
 tracing-subscriber = "0.3.20"
+rand = "0.9.2"
 
 [features]
 default = [

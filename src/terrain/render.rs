@@ -211,13 +211,13 @@ fn update_terrain(
 
         let dxdz_to_idx = |dx: i32, dz: i32| -> usize { ((dz + 1) * 3 + (dx + 1)) as usize };
 
-        debug!(
-            "Neighbor chunks = {:?}",
-            neighbor_chunks
-                .iter()
-                .map(|c| c.map(|cc| cc.position))
-                .collect::<Vec<_>>()
-        );
+        // debug!(
+        //     "Neighbor chunks = {:?}",
+        //     neighbor_chunks
+        //         .iter()
+        //         .map(|c| c.map(|cc| cc.position))
+        //         .collect::<Vec<_>>()
+        // );
 
         let mut values = vec![];
 
