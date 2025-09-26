@@ -2,7 +2,7 @@ use avian3d::prelude::*;
 use bevy::{
     asset::{RenderAssetUsages, uuid_handle},
     color::palettes::css::{PURPLE, YELLOW},
-    ecs::entity::EntityHashMap,
+    ecs::entity::{EntityHashMap, EntityHashSet},
     image::ImageAddressMode,
     mesh::{Indices, VertexAttributeValues},
     platform::collections::HashMap,
@@ -187,9 +187,18 @@ fn update_terrain(
     mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
     terrain_texture: Res<TerrainTexture>,
     settings: Res<RenderPluginSettings>,
+    mut dedup: Local<EntityHashSet>,
 ) -> Result<()> {
+    dedup.clear();
+
     for &ChunkUpdated(chunk_id) in reader.read() {
+        if !dedup.insert(chunk_id) {
+            continue;
+        }
+
         let chunk = chunks.get(chunk_id)?;
+
+        let span = debug_span!("Update terrain", chunk_pos = ?chunk.position).entered();
 
         let mut neighbor_chunks = vec![];
         for dz in -1..=1 {
@@ -257,6 +266,7 @@ fn update_terrain(
             }
         }
 
+        let mc_span = debug_span!(parent: &span, "Marching Cubes").entered();
         let mcmesh = MarchingCubes::new(
             (CHUNK_SIZE + 2, CHUNK_HEIGHT + 2, CHUNK_SIZE + 2),
             (1.0, 1.0, 1.0),
@@ -267,7 +277,9 @@ fn update_terrain(
         )
         .unwrap()
         .generate(mcubes::MeshSide::OutsideOnly);
+        mc_span.exit();
 
+        let bv_span = debug_span!(parent: &span, "Bevy Mesh Generation").entered();
         let mut bvmesh = Mesh::new(
             bevy::mesh::PrimitiveTopology::TriangleList,
             RenderAssetUsages::default(),
@@ -300,6 +312,8 @@ fn update_terrain(
         // Deduplicate vertices to get smooth normals
         deduplicate_vertices(&mut bvmesh);
         bvmesh.compute_normals();
+
+        bv_span.exit();
 
         let bv_normal = bvmesh
             .attribute(Mesh::ATTRIBUTE_NORMAL)
@@ -384,6 +398,8 @@ fn update_terrain(
                 });
             }
         });
+
+        span.exit();
     }
 
     Ok(())
