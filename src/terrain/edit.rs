@@ -57,7 +57,6 @@ fn on_click(
                     random_vel,
                 ),
             )?);
-            debug!("Spawned item stack object");
         }
         PointerButton::Secondary => {
             debug!("Hit pos: {:?}, Hit face: {:?}", block_pos.0, block_pos.1);

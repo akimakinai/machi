@@ -18,6 +18,15 @@ pub struct InventoryUiRoot {
     pub hotbar: Option<u32>,
 }
 
+// #E2A16F
+const INVENTORY_BACKGROUND: Color = Color::srgba_u8(0xE2, 0xA1, 0x6F, 0xC0);
+// #FFF0DD
+const INVENTORY_SLOT_BACKGROUND: Color = Color::srgba_u8(0xFF, 0xF0, 0xDD, 0xFF);
+// #D1D3D4
+const INVENTORY_BORDER_TOP: Color = Color::srgba_u8(0xD1, 0xD3, 0xD4, 0xFF);
+// #86B0BD
+const INVENTORY_BORDER_BOTTOM: Color = Color::srgba_u8(0x86, 0xB0, 0xBD, 0xFF);
+
 pub fn build_inventory_root(
     In(inventory): In<Entity>,
     mut commands: Commands,
@@ -39,17 +48,24 @@ pub fn build_inventory_root(
                 hotbar: None,
             },
             Node {
-                width: percent(80.0),
-                height: percent(80.0),
                 position_type: PositionType::Absolute,
                 left: Val::Percent(10.0),
                 top: Val::Percent(10.0),
-                border: UiRect::all(Val::Px(2.0)),
-                align_items: AlignItems::FlexStart,
+                width: percent(80.0),
+                height: percent(80.0),
                 flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(16.0)),
+                border: UiRect::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.8)),
+            BorderRadius::all(px(6.0)),
+            BorderColor {
+                top: INVENTORY_BORDER_TOP,
+                right: INVENTORY_BORDER_BOTTOM,
+                bottom: INVENTORY_BORDER_BOTTOM,
+                left: INVENTORY_BORDER_TOP,
+            },
+            BackgroundColor(INVENTORY_BACKGROUND),
         ))
         .with_children(|parent| {
             parent
@@ -69,9 +85,12 @@ pub fn build_inventory_root(
                                 width: Val::Px(slot_size),
                                 height: Val::Px(slot_size),
                                 margin: UiRect::all(Val::Px(slot_gap * 0.5)),
+                                border: UiRect::all(Val::Px(2.0)),
                                 ..default()
                             },
-                            BackgroundColor(Color::srgb(0.2, 0.2, 0.2)),
+                            BackgroundColor(INVENTORY_SLOT_BACKGROUND),
+                            BorderColor::all(INVENTORY_SLOT_BACKGROUND.darker(0.2)),
+                            BorderRadius::all(px(2.0)),
                         ));
                         slot.with_children(|slot| {
                             let mut count = slot.spawn((
@@ -84,7 +103,14 @@ pub fn build_inventory_root(
                                 },
                             ));
                             if let Some(stack) = &data.slots[i] {
-                                count.insert(Text::new(stack.quantity.to_string()));
+                                count.insert((
+                                    Text::new(stack.quantity.to_string()),
+                                    TextColor(Color::BLACK),
+                                    TextShadow {
+                                        offset: Vec2::splat(2.),
+                                        color: Color::srgba(0., 0., 0., 0.75),
+                                    },
+                                ));
                             }
                         });
                     }
