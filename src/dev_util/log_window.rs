@@ -51,7 +51,9 @@ fn setup_log_window(mut commands: Commands) {
     commands
         .spawn((
             Name::new("Log Window"),
-            LogWindowRoot { max_messages: None },
+            LogWindowRoot {
+                max_messages: Some(100),
+            },
             Node {
                 width: Val::Percent(80.0),
                 height: Val::Percent(10.0),
@@ -289,9 +291,13 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for LogWindowLayer {
     }
 
     fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+        let meta = event.metadata();
+        if meta.fields().field("tracy.frame_mark").is_some() {
+            return;
+        }
+
         let mut recorder = StringRecorder::new();
         event.record(&mut recorder);
-        let meta = event.metadata();
         let level = meta.level();
         let origin = meta
             .file()
