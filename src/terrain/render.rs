@@ -9,6 +9,7 @@ use bevy::{
     prelude::*,
     render::render_resource::AsBindGroup,
     shader::ShaderRef,
+    tasks::{AsyncComputeTaskPool, Task, futures_lite::future},
 };
 use mcubes::MarchingCubes;
 
@@ -22,18 +23,17 @@ impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RenderPluginSettings>()
             .init_resource::<RenderChunkMap>()
+            .add_message::<RenderChunkSpawned>()
             .add_plugins(MaterialPlugin::<ArrayTextureMaterial>::default())
             .add_systems(Startup, setup_terrain_texture)
             .add_systems(Update, create_array_texture)
-            .add_systems(
-                Update,
-                (create_render_chunk, (update_terrain, update_solid)).chain(),
-            )
+            .add_systems(Update, generate_terrain_mesh)
+            .add_systems(Update, (spawn_generated_terrain_mesh, update_solid).chain())
             .add_observer(chunk_unloaded);
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Clone)]
 struct RenderPluginSettings {
     /// Enable debug gizmos
     debug: bool,
@@ -45,46 +45,6 @@ struct RenderChunkMap(EntityHashMap<RenderChunk>);
 struct RenderChunk {
     pub position: IVec2,
     pub id: Entity,
-}
-
-fn create_render_chunk(
-    mut reader: MessageReader<ChunkUpdated>,
-    chunks: Query<&Chunk>,
-    mut commands: Commands,
-    mut rendered: ResMut<RenderChunkMap>,
-) {
-    for &ChunkUpdated(chunk_id) in reader.read() {
-        let chunk = chunks.get(chunk_id).unwrap();
-        debug!("Chunk updated: {:?}", chunk.position);
-
-        let render_chunk = commands
-            .spawn((
-                Name::new(format!(
-                    "Render Chunk ({}, {})",
-                    chunk.position.x, chunk.position.y
-                )),
-                Transform::from_xyz(
-                    chunk.position.x as f32 * CHUNK_SIZE as f32,
-                    0.0,
-                    chunk.position.y as f32 * CHUNK_SIZE as f32,
-                ),
-                Visibility::Visible,
-            ))
-            .id();
-
-        if let Some(rc) = rendered.0.get_mut(&chunk_id) {
-            commands.entity(rc.id).despawn();
-            rc.id = render_chunk;
-        } else {
-            rendered.0.insert(
-                chunk_id,
-                RenderChunk {
-                    position: chunk.position,
-                    id: render_chunk,
-                },
-            );
-        }
-    }
 }
 
 const TERRAIN_SHADER_PATH: &str = "shaders/terrain_texture.wgsl";
@@ -177,19 +137,27 @@ fn create_array_texture(
     Ok(())
 }
 
-fn update_terrain(
+/// Pending aasynchronous mesh generation task for a terrain chunk.
+#[derive(Component)]
+struct PendingChunk(Task<PendingChunkResult>);
+
+struct PendingChunkResult {
+    mesh: Mesh,
+    chunk_id: Entity,
+    gizmo: GizmoAsset,
+}
+
+fn generate_terrain_mesh(
     mut reader: MessageReader<ChunkUpdated>,
     mut commands: Commands,
     chunks: Query<&Chunk>,
     chunk_map: Res<ChunkMap>,
-    rendered: Res<RenderChunkMap>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
-    terrain_texture: Res<TerrainTexture>,
     settings: Res<RenderPluginSettings>,
     mut dedup: Local<EntityHashSet>,
 ) -> Result<()> {
     dedup.clear();
+
+    let task_pool = AsyncComputeTaskPool::get();
 
     for &ChunkUpdated(chunk_id) in reader.read() {
         if !dedup.insert(chunk_id) {
@@ -266,138 +234,121 @@ fn update_terrain(
             }
         }
 
-        let mc_span = debug_span!(parent: &span, "Marching Cubes").entered();
-        let mcmesh = MarchingCubes::new(
-            (CHUNK_SIZE + 2, CHUNK_HEIGHT + 2, CHUNK_SIZE + 2),
-            (1.0, 1.0, 1.0),
-            (1.0, 1.0, 1.0),
-            default(),
-            values,
-            0.5,
-        )
-        .unwrap()
-        .generate(mcubes::MeshSide::OutsideOnly);
-        mc_span.exit();
-
-        let bv_span = debug_span!(parent: &span, "Bevy Mesh Generation").entered();
-        let mut bvmesh = Mesh::new(
-            bevy::mesh::PrimitiveTopology::TriangleList,
-            RenderAssetUsages::default(),
-        );
-
-        let to_arr = |v: lin_alg::f32::Vec3| [v.x, v.y, v.z];
-
-        let mut positions = vec![];
-        let mut uvs = vec![];
-
-        for pos in &mcmesh.vertices {
-            let position = to_arr(pos.posit);
-            positions.push(position);
-            uvs.push([0.0, 0.0]);
-        }
-
-        let indices = mcmesh
-            .indices
-            .iter()
-            .map(|&i| i as u32)
-            // probably CW/CCW reversed
-            .rev()
-            .collect::<Vec<_>>();
-
-        bvmesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-        bvmesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-        bvmesh.insert_indices(Indices::U32(indices.clone()));
-
-        // mcubes generates incorrect(?) normals for diagonal parts, so recompute them.
-        // Deduplicate vertices to get smooth normals
-        deduplicate_vertices(&mut bvmesh);
-        bvmesh.compute_normals();
-
-        bv_span.exit();
-
-        let bv_normal = bvmesh
-            .attribute(Mesh::ATTRIBUTE_NORMAL)
+        let settings = settings.clone();
+        let task = task_pool.spawn(async move {
+            let mc_span = debug_span!("Marching Cubes").entered();
+            let mcmesh = MarchingCubes::new(
+                (CHUNK_SIZE + 2, CHUNK_HEIGHT + 2, CHUNK_SIZE + 2),
+                (1.0, 1.0, 1.0),
+                (1.0, 1.0, 1.0),
+                default(),
+                values,
+                0.5,
+            )
             .unwrap()
-            .as_float3()
-            .unwrap();
-        let bv_position = bvmesh
-            .attribute(Mesh::ATTRIBUTE_POSITION)
-            .unwrap()
-            .as_float3()
-            .unwrap();
+            .generate(mcubes::MeshSide::OutsideOnly);
+            mc_span.exit();
 
-        let mut colors = vec![[0.0, 0.0, 1.0, 0.0]; bv_position.len()];
+            let bv_span = debug_span!("Bevy Mesh Generation").entered();
+            let mut bvmesh = Mesh::new(
+                bevy::mesh::PrimitiveTopology::TriangleList,
+                RenderAssetUsages::default(),
+            );
 
-        let mut gizmo = GizmoAsset::default();
+            let to_arr = |v: lin_alg::f32::Vec3| [v.x, v.y, v.z];
 
-        for index in bvmesh.indices().unwrap().iter() {
-            let normal = Vec3::from(bv_normal[index]);
-            let vert_position = Vec3::from(bv_position[index]);
-            let position = (vert_position - normal * 0.1).round();
-            let idx = (position.x as usize)
-                + (position.y as usize) * (CHUNK_SIZE + 2)
-                + (position.z as usize) * (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2);
-            let block_id = block_ids[idx];
+            let mut positions = vec![];
+            let mut uvs = vec![];
 
-            let color = match block_id {
-                BlockId(1) => [1.0, 0.0, 0.0, 0.0],
-                BlockId(2) => [0.0, 0.1, 0.0, 0.0],
-                _ => [1.0, 0.0, 1.0, 1.0],
-            };
-            colors[index] = color;
-
-            if !settings.debug {
-                continue;
+            for pos in &mcmesh.vertices {
+                let position = to_arr(pos.posit);
+                positions.push(position);
+                uvs.push([0.0, 0.0]);
             }
-            // Normal
-            gizmo.line(
-                vert_position,
-                vert_position + normal * 0.2,
-                match color {
-                    [1.0, 0.0, 1.0, 1.0] => PURPLE,
-                    _ => YELLOW,
-                },
-            );
-            // Block reference
-            gizmo.arrow(
-                vert_position,
-                position,
-                match color {
-                    [1.0, 0.0, 1.0, 1.0] => PURPLE,
-                    _ => YELLOW,
-                },
-            );
-        }
 
-        bvmesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+            let indices = mcmesh
+                .indices
+                .iter()
+                .map(|&i| i as u32)
+                // probably CW/CCW reversed
+                .rev()
+                .collect::<Vec<_>>();
 
-        let bvmesh = meshes.add(bvmesh);
+            bvmesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+            bvmesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+            bvmesh.insert_indices(Indices::U32(indices.clone()));
 
-        let render_chunk = rendered.0.get(&chunk_id).unwrap().id;
+            // mcubes generates incorrect(?) normals for diagonal parts, so recompute them.
+            // Deduplicate vertices to get smooth normals
+            deduplicate_vertices(&mut bvmesh);
+            bvmesh.compute_normals();
 
-        commands.entity(render_chunk).with_children(|parent| {
-            let mut mesh_entity = parent.spawn((
-                Mesh3d(bvmesh),
-                MeshMaterial3d(terrain_texture.material_handle.clone()),
-                RigidBody::Static,
-                ColliderConstructor::TrimeshFromMesh,
-                CollisionLayers::new(
-                    [GameLayer::Terrain],
-                    [GameLayer::Default, GameLayer::Character],
-                ),
-                Transform::from_translation(Vec3::splat(-0.5)),
-                Name::new(format!(
-                    "Render Chunk Mesh ({}, {})",
-                    chunk.position.x, chunk.position.y
-                )),
-            ));
-            if settings.debug {
-                mesh_entity.with_child(Gizmo {
-                    handle: gizmo_assets.add(gizmo),
-                    ..default()
-                });
+            bv_span.exit();
+
+            let bv_normal = bvmesh
+                .attribute(Mesh::ATTRIBUTE_NORMAL)
+                .unwrap()
+                .as_float3()
+                .unwrap();
+            let bv_position = bvmesh
+                .attribute(Mesh::ATTRIBUTE_POSITION)
+                .unwrap()
+                .as_float3()
+                .unwrap();
+
+            let mut colors = vec![[0.0, 0.0, 1.0, 0.0]; bv_position.len()];
+
+            let mut gizmo = GizmoAsset::default();
+
+            for index in bvmesh.indices().unwrap().iter() {
+                let normal = Vec3::from(bv_normal[index]);
+                let vert_position = Vec3::from(bv_position[index]);
+                let position = (vert_position - normal * 0.1).round();
+                let idx = (position.x as usize)
+                    + (position.y as usize) * (CHUNK_SIZE + 2)
+                    + (position.z as usize) * (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2);
+                let block_id = block_ids[idx];
+
+                let color = match block_id {
+                    BlockId(1) => [1.0, 0.0, 0.0, 0.0],
+                    BlockId(2) => [0.0, 0.1, 0.0, 0.0],
+                    _ => [1.0, 0.0, 1.0, 1.0],
+                };
+                colors[index] = color;
+
+                if !settings.debug {
+                    continue;
+                }
+                // Normal
+                gizmo.line(
+                    vert_position,
+                    vert_position + normal * 0.2,
+                    match color {
+                        [1.0, 0.0, 1.0, 1.0] => PURPLE,
+                        _ => YELLOW,
+                    },
+                );
+                // Block reference
+                gizmo.arrow(
+                    vert_position,
+                    position,
+                    match color {
+                        [1.0, 0.0, 1.0, 1.0] => PURPLE,
+                        _ => YELLOW,
+                    },
+                );
+            }
+
+            bvmesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+
+            PendingChunkResult {
+                mesh: bvmesh,
+                chunk_id,
+                gizmo,
             }
         });
+
+        commands.spawn(PendingChunk(task));
 
         span.exit();
     }
@@ -446,10 +397,103 @@ fn deduplicate_vertices(mesh: &mut Mesh) {
     mesh.insert_indices(Indices::U32(new_indices));
 }
 
-fn update_solid(
-    mut reader: MessageReader<ChunkUpdated>,
+/// Message sent when a render chunk is (re)spawned.
+#[derive(Message)]
+struct RenderChunkSpawned {
+    render_chunk: Entity,
+    chunk: Entity,
+}
+
+fn spawn_generated_terrain_mesh(
+    mut commands: Commands,
+    mut pending: Query<(Entity, &mut PendingChunk)>,
     chunks: Query<&Chunk>,
-    render_chunks: Res<RenderChunkMap>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
+    mut rendered: ResMut<RenderChunkMap>,
+    terrain_texture: Res<TerrainTexture>,
+    settings: Res<RenderPluginSettings>,
+) {
+    for (entity, mut pending_chunk) in &mut pending {
+        let Some(result) = bevy::tasks::block_on(future::poll_once(&mut pending_chunk.0)) else {
+            continue;
+        };
+        commands.entity(entity).despawn();
+
+        let PendingChunkResult {
+            mesh,
+            chunk_id,
+            gizmo,
+        } = result;
+
+        let bvmesh = meshes.add(mesh);
+
+        let Ok(chunk) = chunks.get(chunk_id) else {
+            continue;
+        };
+
+        let render_chunk = commands
+            .spawn((
+                Name::new(format!(
+                    "Render Chunk ({}, {})",
+                    chunk.position.x, chunk.position.y
+                )),
+                Transform::from_xyz(
+                    chunk.position.x as f32 * CHUNK_SIZE as f32,
+                    0.0,
+                    chunk.position.y as f32 * CHUNK_SIZE as f32,
+                ),
+                Visibility::Visible,
+            ))
+            .id();
+
+        if let Some(rc) = rendered.0.get_mut(&chunk_id) {
+            commands.entity(rc.id).despawn();
+            rc.id = render_chunk;
+        } else {
+            rendered.0.insert(
+                chunk_id,
+                RenderChunk {
+                    position: chunk.position,
+                    id: render_chunk,
+                },
+            );
+        }
+
+        commands.entity(render_chunk).with_children(|parent| {
+            let mut mesh_entity = parent.spawn((
+                Mesh3d(bvmesh),
+                MeshMaterial3d(terrain_texture.material_handle.clone()),
+                RigidBody::Static,
+                ColliderConstructor::TrimeshFromMesh,
+                CollisionLayers::new(
+                    [GameLayer::Terrain],
+                    [GameLayer::Default, GameLayer::Character],
+                ),
+                Transform::from_translation(Vec3::splat(-0.5)),
+                Name::new(format!(
+                    "Render Chunk Mesh ({}, {})",
+                    chunk.position.x, chunk.position.y
+                )),
+            ));
+            if settings.debug {
+                mesh_entity.with_child(Gizmo {
+                    handle: gizmo_assets.add(gizmo),
+                    ..default()
+                });
+            }
+        });
+
+        commands.write_message(RenderChunkSpawned {
+            render_chunk,
+            chunk: chunk_id,
+        });
+    }
+}
+
+fn update_solid(
+    mut reader: MessageReader<RenderChunkSpawned>,
+    chunks: Query<&Chunk>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -467,10 +511,12 @@ fn update_solid(
         *cube_material = materials.add(material);
     }
 
-    for &ChunkUpdated(chunk_id) in reader.read() {
-        let chunk = chunks.get(chunk_id).unwrap();
-
-        let render_chunk = render_chunks.0.get(&chunk_id).unwrap().id;
+    for &RenderChunkSpawned {
+        render_chunk,
+        chunk,
+    } in reader.read()
+    {
+        let chunk = chunks.get(chunk).unwrap();
 
         for z in 0..CHUNK_SIZE as i32 {
             for y in 0..CHUNK_HEIGHT as i32 {
