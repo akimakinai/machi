@@ -4,6 +4,7 @@ use bevy::{prelude::*, window::PrimaryWindow};
 use crate::{
     inventory::{ItemId, ItemStack},
     object::item_stack::{ItemStackObjAssets, create_item_stack_obj},
+    pause::Pause,
     terrain::chunk::BlockId,
 };
 
@@ -31,7 +32,11 @@ fn on_click(
     mut blocks: Blocks,
     mut commands: Commands,
     item_assets: Res<ItemStackObjAssets>,
+    pause: Res<State<Pause>>,
 ) -> Result<()> {
+    if pause.0 {
+        return Ok(());
+    }
     let Some(block_pos) = hovered.0 else {
         return Ok(());
     };
