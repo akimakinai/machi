@@ -229,11 +229,11 @@ fn detect_scrollbar_drag(
         };
         let mut dragging = false;
         for child in children.iter() {
-            if let Ok(state) = scrollbar_state.get(child) {
-                if state.dragging {
-                    dragging = true;
-                    break;
-                }
+            if let Ok(state) = scrollbar_state.get(child)
+                && state.dragging
+            {
+                dragging = true;
+                break;
             }
         }
         if dragging {

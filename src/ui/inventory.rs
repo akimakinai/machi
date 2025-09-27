@@ -113,7 +113,7 @@ pub fn build_inventory_root(
                             BorderRadius::all(px(2.0)),
                         ));
                         slot.with_children(|slot| {
-                            let mut count = slot.spawn((
+                            slot.spawn((
                                 Name::new("Count"),
                                 Node {
                                     position_type: PositionType::Absolute,
@@ -142,7 +142,7 @@ fn update_inventory_visibility(
         InventoryState::Open => Display::Flex,
         InventoryState::Close => Display::None,
     };
-    for mut node in &mut roots {
+    for node in &mut roots {
         node.map_unchanged(|node| &mut node.display)
             .set_if_neq(display);
     }

@@ -125,7 +125,7 @@ fn merge_items(
     mut commands: Commands,
     mut collision_started: MessageReader<CollisionStarted>,
     merge_sensors: Query<&ChildOf, With<ItemSensor>>,
-    mut item_stack_objs: Query<(Entity, &mut ItemStackObj)>,
+    item_stack_objs: Query<(Entity, &ItemStackObj)>,
     item_assets: Res<ItemStackObjAssets>,
     transforms: Query<&Transform>,
 ) -> Result<()> {
@@ -180,8 +180,7 @@ fn merge_items(
 }
 
 fn pickup_items(
-    names: Query<NameOrEntity>,
-    mut players: Query<&Children, With<Player>>,
+    players: Query<&Children, With<Player>>,
     mut inventories: Query<&mut Inventory>,
     item_objs: Query<(&ItemStackObj, &Transform)>,
     item_sensors: Query<&ChildOf, With<ItemSensor>>,
