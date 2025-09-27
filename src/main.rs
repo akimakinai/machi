@@ -1,5 +1,6 @@
 use avian3d::prelude::*;
 use bevy::{
+    ecs::error::DefaultErrorHandler,
     log::{DEFAULT_FILTER, LogPlugin},
     prelude::*,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
@@ -35,6 +36,7 @@ mod ui;
 
 fn main() {
     App::new()
+        .insert_resource(DefaultErrorHandler(bevy::ecs::error::error))
         .add_plugins(DefaultPlugins.set(LogPlugin {
             filter: format!("{},{}=debug", DEFAULT_FILTER, env!("CARGO_PKG_NAME")),
             custom_layer: |_app| Some(LogWindowLayer.boxed()),

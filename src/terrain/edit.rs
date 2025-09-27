@@ -39,6 +39,10 @@ fn on_click(
     match on.event().button {
         PointerButton::Primary => {
             let get_id = blocks.get_block(block_pos.0)?;
+            if get_id.0 == 0 {
+                return Ok(());
+            }
+
             blocks.set_block(block_pos.0, BlockId(0))?;
             let random_vel = LinearVelocity(Vec3::new(
                 (rand::random::<f32>() - 0.5) * 2.0,

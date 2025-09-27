@@ -6,4 +6,5 @@ pub enum GameLayer {
     Default,
     Terrain,
     Character,
+    Object,
 }

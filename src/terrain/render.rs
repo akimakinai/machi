@@ -468,7 +468,7 @@ fn spawn_generated_terrain_mesh(
                 ColliderConstructor::TrimeshFromMesh,
                 CollisionLayers::new(
                     [GameLayer::Terrain],
-                    [GameLayer::Default, GameLayer::Character],
+                    [GameLayer::Default, GameLayer::Character, GameLayer::Object],
                 ),
                 Transform::from_translation(Vec3::splat(-0.5)),
                 Name::new(format!(
@@ -533,7 +533,7 @@ fn update_solid(
                         ColliderConstructor::ConvexHullFromMesh,
                         CollisionLayers::new(
                             [GameLayer::Terrain],
-                            [GameLayer::Default, GameLayer::Character],
+                            [GameLayer::Default, GameLayer::Character, GameLayer::Object],
                         ),
                         Transform::from_translation(Vec3::new(
                             x as f32 + 0.5,
