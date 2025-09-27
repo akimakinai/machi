@@ -5,7 +5,19 @@ use crate::inventory::Inventory;
 pub struct InventoryUiPlugin;
 
 impl Plugin for InventoryUiPlugin {
-    fn build(&self, app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.init_state::<InventoryState>().add_systems(
+            Update,
+            (inventory_toggle, update_inventory_visibility).chain(),
+        );
+    }
+}
+
+#[derive(States, Default, Debug, Hash, PartialEq, Eq, Clone)]
+pub enum InventoryState {
+    Open,
+    #[default]
+    Close,
 }
 
 #[derive(Component)]
@@ -48,6 +60,7 @@ pub fn build_inventory_root(
                 hotbar: None,
             },
             Node {
+                display: Display::None,
                 position_type: PositionType::Absolute,
                 left: Val::Percent(10.0),
                 top: Val::Percent(10.0),
@@ -116,4 +129,31 @@ pub fn build_inventory_root(
                     }
                 });
         });
+}
+
+fn update_inventory_visibility(
+    state: Res<State<InventoryState>>,
+    mut roots: Query<&mut Node, With<InventoryUiRoot>>,
+) {
+    let display = match state.get() {
+        InventoryState::Open => Display::Flex,
+        InventoryState::Close => Display::None,
+    };
+    for mut node in &mut roots {
+        node.map_unchanged(|node| &mut node.display)
+            .set_if_neq(display);
+    }
+}
+
+fn inventory_toggle(
+    state: Res<State<InventoryState>>,
+    mut next: ResMut<NextState<InventoryState>>,
+    key: Res<ButtonInput<KeyCode>>,
+) {
+    if key.just_pressed(KeyCode::KeyE) {
+        next.set(match state.get() {
+            InventoryState::Open => InventoryState::Close,
+            InventoryState::Close => InventoryState::Open,
+        });
+    }
 }
