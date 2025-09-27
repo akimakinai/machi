@@ -2,7 +2,8 @@ use avian3d::prelude::*;
 use bevy::{ecs::relationship::RelatedSpawner, platform::collections::HashMap, prelude::*};
 
 use crate::{
-    inventory::{ItemId, ItemStack},
+    character::Player,
+    inventory::{Inventory, ItemId, ItemStack},
     physics::GameLayer,
 };
 
@@ -11,7 +12,8 @@ pub struct ItemStackObjPlugin;
 impl Plugin for ItemStackObjPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ItemStackObjAssets>()
-            .add_systems(Update, merge_item_stack_objs);
+            .add_systems(Update, merge_items)
+            .add_systems(Update, pickup_items);
     }
 }
 
@@ -21,7 +23,7 @@ pub struct ItemStackObj {
 }
 
 #[derive(Component)]
-struct MergeSensor;
+struct ItemSensor;
 
 pub fn create_item_stack_obj(
     item_stack: ItemStack,
@@ -57,12 +59,17 @@ pub fn create_item_stack_obj(
         }
     };
 
-    let merge_sensor = (
-        Name::new("ItemStackObj Merge Sensor"),
-        MergeSensor,
+    // Sensor to detect collisions for merging and pickup
+    let sensor = (
+        Name::new("ItemStackObj Sensor"),
+        ItemSensor,
         Sphere::new(0.5).collider(),
         Sensor,
         CollisionEventsEnabled,
+        CollisionLayers::new(
+            [GameLayer::Object],
+            [GameLayer::Terrain, GameLayer::Character, GameLayer::Object],
+        ),
     );
 
     Ok((
@@ -77,7 +84,7 @@ pub fn create_item_stack_obj(
         LockedAxes::ROTATION_LOCKED,
         Visibility::Visible,
         overrides,
-        Children::spawn((Spawn(merge_sensor), SpawnWith(spawn_blocks))),
+        Children::spawn((Spawn(sensor), SpawnWith(spawn_blocks))),
     ))
 }
 
@@ -114,10 +121,10 @@ impl FromWorld for ItemStackObjAssets {
     }
 }
 
-fn merge_item_stack_objs(
+fn merge_items(
     mut commands: Commands,
     mut collision_started: MessageReader<CollisionStarted>,
-    merge_sensors: Query<&ChildOf, With<MergeSensor>>,
+    merge_sensors: Query<&ChildOf, With<ItemSensor>>,
     mut item_stack_objs: Query<(Entity, &mut ItemStackObj)>,
     item_assets: Res<ItemStackObjAssets>,
     transforms: Query<&Transform>,
@@ -167,6 +174,58 @@ fn merge_item_stack_objs(
             &item_assets,
             Transform::from_translation(mid_translation),
         )?);
+    }
+
+    Ok(())
+}
+
+fn pickup_items(
+    names: Query<NameOrEntity>,
+    mut players: Query<&Children, With<Player>>,
+    mut inventories: Query<&mut Inventory>,
+    item_objs: Query<(&ItemStackObj, &Transform)>,
+    item_sensors: Query<&ChildOf, With<ItemSensor>>,
+    mut collision_started: MessageReader<CollisionStarted>,
+    item_assets: Res<ItemStackObjAssets>,
+    mut commands: Commands,
+) -> Result<()> {
+    for collision in collision_started.read() {
+        let &CollisionStarted(entity1, entity2) = collision;
+
+        let (player_children, item_id) = if let Ok(player_children) = players.get(entity1)
+            && let Ok(item_sensor_parent) = item_sensors.get(entity2)
+        {
+            (player_children, item_sensor_parent.parent())
+        } else if let Ok(player_children) = players.get(entity2)
+            && let Ok(item_sensor_parent) = item_sensors.get(entity1)
+        {
+            (player_children, item_sensor_parent.parent())
+        } else {
+            continue;
+        };
+
+        let (item_obj, item_transform) = item_objs.get(item_id)?;
+
+        let inventory = player_children
+            .iter()
+            .find(|&c| inventories.contains(c))
+            .ok_or("Player has no inventory")?;
+        let mut inventory = inventories.get_mut(inventory)?;
+
+        if let Err(remaining) = inventory.add_item_stack(item_obj.item_stack.clone()) {
+            if remaining.quantity == item_obj.item_stack.quantity {
+                continue;
+            }
+
+            commands.spawn(create_item_stack_obj(
+                remaining,
+                &item_assets,
+                Transform::from_translation(item_transform.translation),
+            )?);
+        }
+
+        commands.entity(item_id).despawn();
+        debug!("Despawned item {:?}", item_id);
     }
 
     Ok(())

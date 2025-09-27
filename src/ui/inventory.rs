@@ -6,10 +6,12 @@ pub struct InventoryUiPlugin;
 
 impl Plugin for InventoryUiPlugin {
     fn build(&self, app: &mut App) {
-        app.init_state::<InventoryState>().add_systems(
-            Update,
-            (inventory_toggle, update_inventory_visibility).chain(),
-        );
+        app.init_state::<InventoryState>()
+            .add_systems(
+                Update,
+                (inventory_toggle, update_inventory_visibility).chain(),
+            )
+            .add_systems(Update, update_inventory_slots);
     }
 }
 
@@ -29,6 +31,9 @@ pub struct InventoryUiRoot {
     /// Treats the last N slots in `inventory` as hotbar slots
     pub hotbar: Option<u32>,
 }
+
+#[derive(Component)]
+struct InventoryUiSlot(usize);
 
 // #E2A16F
 const INVENTORY_BACKGROUND: Color = Color::srgba_u8(0xE2, 0xA1, 0x6F, 0xC0);
@@ -94,6 +99,8 @@ pub fn build_inventory_root(
                 .with_children(|grid| {
                     for i in 0..data.slots.len() {
                         let mut slot = grid.spawn((
+                            Name::new(format!("Slot {}", i)),
+                            InventoryUiSlot(i),
                             Node {
                                 width: Val::Px(slot_size),
                                 height: Val::Px(slot_size),
@@ -114,17 +121,13 @@ pub fn build_inventory_root(
                                     bottom: Val::Px(4.0),
                                     ..default()
                                 },
+                                Text::new(String::new()),
+                                TextColor(Color::BLACK),
+                                TextShadow {
+                                    offset: Vec2::splat(2.),
+                                    color: Color::srgba(0., 0., 0., 0.75),
+                                },
                             ));
-                            if let Some(stack) = &data.slots[i] {
-                                count.insert((
-                                    Text::new(stack.quantity.to_string()),
-                                    TextColor(Color::BLACK),
-                                    TextShadow {
-                                        offset: Vec2::splat(2.),
-                                        color: Color::srgba(0., 0., 0., 0.75),
-                                    },
-                                ));
-                            }
                         });
                     }
                 });
@@ -156,4 +159,39 @@ fn inventory_toggle(
             InventoryState::Close => InventoryState::Open,
         });
     }
+}
+
+fn update_inventory_slots(
+    roots: Query<(Entity, Ref<InventoryUiRoot>)>,
+    slots: Query<&InventoryUiSlot>,
+    inventories: Query<Ref<Inventory>>,
+    children: Query<&Children>,
+    mut texts: Query<&mut Text>,
+) -> Result<()> {
+    for (root_id, root) in &roots {
+        let inventory = inventories.get(root.inventory)?;
+        if !root.is_added() && !inventory.is_changed() {
+            continue;
+        }
+
+        for child in children.iter_descendants(root_id) {
+            let Ok(slot) = slots.get(child) else {
+                continue;
+            };
+
+            let num = inventory.slots[slot.0]
+                .as_ref()
+                .map(|s| s.quantity.to_string())
+                .unwrap_or_default();
+
+            for schild in children.get(child)?.iter() {
+                if let Ok(mut text) = texts.get_mut(schild) {
+                    text.0 = num;
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

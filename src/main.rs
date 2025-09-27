@@ -34,6 +34,8 @@ mod physics;
 mod terrain;
 mod ui;
 
+const PLAYER_INVENTORY_SIZE: usize = 36;
+
 fn main() {
     App::new()
         .insert_resource(DefaultErrorHandler(bevy::ecs::error::error))
@@ -143,7 +145,10 @@ fn spawn_player(
             Transform::from_translation(Vec3::new(8.0, 25.0, 8.0)),
             Mass(1.0),
             collider,
-            CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain]),
+            CollisionLayers::new(
+                [GameLayer::Character],
+                [GameLayer::Terrain, GameLayer::Object],
+            ),
             Player,
         ))
         .with_children(|c| {
@@ -152,7 +157,7 @@ fn spawn_player(
                 Transform::from_scale(Vec3::splat(2.0)),
                 PlayerCamera,
             ));
-            let mut slots = vec![None; 32];
+            let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
             slots[0] = ItemStack {
                 item_id: 1,
                 quantity: 64,
