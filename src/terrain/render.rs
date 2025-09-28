@@ -113,8 +113,9 @@ fn create_array_texture(
             .get_mut(handle)
             .expect("Image should have been loaded");
 
-        // Create a new array texture asset from the loaded texture.
-        let array_layers = 4;
+        // Convert array texture assuming 1:1 aspect ratio
+        debug_assert_eq!(image.height() % image.width(), 0);
+        let array_layers = image.height() / image.width();
         image.reinterpret_stacked_2d_as_array(array_layers);
 
         let desc = image.sampler.get_or_init_descriptor();
@@ -194,17 +195,10 @@ fn generate_terrain_mesh(
 
         let dxdz_to_idx = |dx: i32, dz: i32| -> usize { ((dz + 1) * 3 + (dx + 1)) as usize };
 
-        // debug!(
-        //     "Neighbor chunks = {:?}",
-        //     neighbor_chunks
-        //         .iter()
-        //         .map(|c| c.map(|cc| cc.position))
-        //         .collect::<Vec<_>>()
-        // );
-
         let mut values = vec![];
 
         let mut block_ids = vec![];
+        let mut durability_vals = vec![];
 
         for z in -1..(CHUNK_SIZE as i32 + 1) {
             for y in -1..(CHUNK_HEIGHT as i32 + 1) {
@@ -221,21 +215,26 @@ fn generate_terrain_mesh(
                         dxdz.y = 1;
                     }
 
-                    let block_id = if y < 0 || y >= CHUNK_HEIGHT as i32 {
-                        BlockId::AIR
+                    let (block_id, durability) = if y < 0 || y >= CHUNK_HEIGHT as i32 {
+                        (BlockId::AIR, 1.0)
                     } else {
                         let neighbor_idx = dxdz_to_idx(dxdz.x, dxdz.y);
                         if let Some(neighbor_chunk) = neighbor_chunks[neighbor_idx] {
                             let nx = x - dxdz.x * CHUNK_SIZE as i32;
                             let nz = z - dxdz.y * CHUNK_SIZE as i32;
-                            neighbor_chunk.get_block(IVec3::new(nx, y, nz))
+                            (
+                                neighbor_chunk.get_block(IVec3::new(nx, y, nz)),
+                                neighbor_chunk.get_durability(IVec3::new(nx, y, nz)),
+                            )
                         } else {
-                            BlockId::AIR
+                            (BlockId::AIR, 1.0)
                         }
                     };
 
                     values.push(if block_id.is_terrain() { 1.0 } else { 0.0 });
                     block_ids.push(block_id);
+
+                    durability_vals.push(durability);
                 }
             }
         }
@@ -304,6 +303,8 @@ fn generate_terrain_mesh(
 
             let mut colors = vec![[0.0, 0.0, 1.0, 0.0]; bv_position.len()];
 
+            let mut uv1 = vec![[0.0, 0.0]; bv_position.len()];
+
             let mut gizmo = GizmoAsset::default();
 
             for index in bvmesh.indices().unwrap().iter() {
@@ -321,6 +322,9 @@ fn generate_terrain_mesh(
                     _ => [1.0, 0.0, 1.0, 1.0],
                 };
                 colors[index] = color;
+
+                let durability = durability_vals[idx];
+                uv1[index] = [durability, 0.0];
 
                 if !settings.debug {
                     continue;
@@ -346,6 +350,7 @@ fn generate_terrain_mesh(
             }
 
             bvmesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+            bvmesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uv1);
 
             PendingChunkResult {
                 mesh: bvmesh,

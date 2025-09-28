@@ -61,6 +61,7 @@ impl BlockId {
 pub struct Chunk {
     pub position: IVec2,
     pub blocks: Box<[[[BlockId; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]>,
+    pub durability: Box<[[[f32; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]>,
 }
 
 impl Chunk {
@@ -68,6 +69,7 @@ impl Chunk {
         Self {
             position,
             blocks: Box::new([[[BlockId(0); CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]),
+            durability: Box::new([[[1.0; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]),
         }
     }
 
@@ -77,6 +79,13 @@ impl Chunk {
 
     pub fn set_block(&mut self, position: IVec3, block: BlockId) {
         self.blocks[position.x as usize][position.y as usize][position.z as usize] = block;
+        // testing
+        self.durability[position.x as usize][position.y as usize][position.z as usize] =
+            rand::random::<f32>();
+    }
+
+    pub fn get_durability(&self, position: IVec3) -> f32 {
+        self.durability[position.x as usize][position.y as usize][position.z as usize]
     }
 }
 

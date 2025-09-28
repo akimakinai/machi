@@ -24,14 +24,15 @@ fn sample_color(layer: u32, pos: vec3<f32>, tri_w: vec3<f32>) -> vec4<f32> {
     return xy * tri_w.z + yz * tri_w.x + zx * tri_w.y;
 }
 
-fn sample_normal(layer: u32, pos: vec3<f32>, tri_w: vec3<f32>, axis_s: vec3<f32>) -> vec3<f32> {
+fn sample_normal(layer: u32, pos: vec3<f32>, tri_w: vec3<f32>, axis_s: vec3<f32>) -> vec4<f32> {
     // https://bgolus.medium.com/normal-mapping-for-a-triplanar-shader-10bf39dca05a
-    let xy_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, pos.xy, layer, view.mip_bias).rgb;
-    let yz_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, pos.yz, layer, view.mip_bias).rgb;
-    let zx_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, pos.zx, layer, view.mip_bias).rgb;
-    return xy_nt.xyz * tri_w.z * axis_s.z +
+    let xy_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, pos.xy, layer, view.mip_bias);
+    let yz_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, pos.yz, layer, view.mip_bias);
+    let zx_nt = textureSampleBias(my_array_normal, my_array_normal_sampler, pos.zx, layer, view.mip_bias);
+    return vec4(xy_nt.xyz * tri_w.z * axis_s.z +
            yz_nt.yzx * tri_w.x * axis_s.x +
-           zx_nt.zxy * tri_w.y * axis_s.y;
+           zx_nt.zxy * tri_w.y * axis_s.y,
+           xy_nt.a * tri_w.z + yz_nt.a * tri_w.x + zx_nt.a * tri_w.y);
 }
 
 @fragment
@@ -60,34 +61,53 @@ fn fragment(
     var accum_color: vec4<f32> = vec4<f32>(0.0);
     var accum_normal: vec3<f32> = vec3<f32>(0.0);
 
+    var crack_color: vec4<f32> = vec4(0.0);
+    var crack_normal: vec4<f32> = vec4(0.0);
+
     let eps = 0.0001;
 
     if (weights.x > eps) {
-        let c = sample_color(0u, mesh.world_position.xyz, tri_weights);
+        let c = sample_color(1u, mesh.world_position.xyz, tri_weights);
         accum_color += c * weights.x;
-        let n = sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign);
-        accum_normal += n * weights.x;
+        let n = sample_normal(1u, mesh.world_position.xyz, tri_weights, axis_sign);
+        accum_normal += n.xyz * weights.x;
+
+        crack_color += sample_color(0u, mesh.world_position.xyz, tri_weights) * weights.x;
+        crack_normal += sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign) * weights.x;
     }
     if (weights.y > eps) {
-        let c = sample_color(1u, mesh.world_position.xyz, tri_weights);
+        let c = sample_color(2u, mesh.world_position.xyz, tri_weights);
         accum_color += c * weights.y;
-        let n = sample_normal(1u, mesh.world_position.xyz, tri_weights, axis_sign);
-        accum_normal += n * weights.y;
+        let n = sample_normal(2u, mesh.world_position.xyz, tri_weights, axis_sign);
+        accum_normal += n.xyz * weights.y;
+
+        crack_color += sample_color(0u, mesh.world_position.xyz, tri_weights) * weights.y;
+        crack_normal += sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign) * weights.y;
     }
     if (weights.z > eps) {
-        let c = sample_color(2u, mesh.world_position.xyz, tri_weights);
+        let c = sample_color(3u, mesh.world_position.xyz, tri_weights);
         accum_color += c * weights.z;
-        let n = sample_normal(2u, mesh.world_position.xyz, tri_weights, axis_sign);
-        accum_normal += n * weights.z;
+        let n = sample_normal(3u, mesh.world_position.xyz, tri_weights, axis_sign);
+        accum_normal += n.xyz * weights.z;
+
+        crack_color += sample_color(0u, mesh.world_position.xyz, tri_weights) * weights.z;
+        crack_normal += sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign) * weights.z;
     }
     if (weights.w > eps) {
-        let c = sample_color(3u, mesh.world_position.xyz, tri_weights);
+        let c = sample_color(4u, mesh.world_position.xyz, tri_weights);
         accum_color += c * weights.w;
-        let n = sample_normal(3u, mesh.world_position.xyz, tri_weights, axis_sign);
-        accum_normal += n * weights.w;
+        let n = sample_normal(4u, mesh.world_position.xyz, tri_weights, axis_sign);
+        accum_normal += n.xyz * weights.w;
+
+        crack_color += sample_color(0u, mesh.world_position.xyz, tri_weights) * weights.w;
+        crack_normal += sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign) * weights.w;
     }
 
-    pbr_input.material.base_color = accum_color;
+    let durability = mesh.uv_b.x;
+    accum_color = vec4(mix(accum_color.rgb, crack_color.rgb, (1.0 - durability) * crack_color.a), 1.0);
+    accum_normal = mix(accum_normal, crack_normal.rgb, (1.0 - durability) * crack_normal.a);
+
+    pbr_input.material.base_color = min(accum_color, vec4<f32>(1.0));
     pbr_input.N = normalize(accum_normal);
     pbr_input.V = fns::calculate_view(mesh.world_position, pbr_input.is_orthographic);
 
