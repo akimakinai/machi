@@ -1,8 +1,8 @@
-use std::f32::consts::PI;
-
 // Based on https://github.com/Jondolf/avian/blob/cf1d88a2c032a215633a8c32e8e4bb08b16ae790/crates/avian3d/examples/dynamic_character_3d/plugin.rs
+
 use avian3d::prelude::*;
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
+use std::f32::consts::PI;
 
 use crate::{PlayerCamera, pause::PausableSystems};
 
