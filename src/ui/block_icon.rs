@@ -10,9 +10,9 @@ impl Plugin for BlockIconPlugin {
 
 #[derive(AsBindGroup, Asset, TypePath, Debug, Clone)]
 pub struct BlockIconMaterial {
-    // #[texture(0)]
-    // #[sampler(1)]
-    // pub icon: Handle<Image>,
+    #[texture(0)]
+    #[sampler(1)]
+    pub icon: Handle<Image>,
 }
 
 impl UiMaterial for BlockIconMaterial {
