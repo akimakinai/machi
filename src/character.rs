@@ -10,15 +10,14 @@ pub struct CharacterPlugin;
 
 impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<MovementAction>()
-            .add_observer(add_ground_shape_caster)
+        app.add_observer(add_ground_shape_caster)
+            .add_observer(movement)
             .add_systems(
                 Update,
                 (
                     keyboard_input,
                     gamepad_input,
                     update_grounded,
-                    movement,
                     apply_movement_damping,
                 )
                     .chain()
@@ -32,9 +31,15 @@ impl Plugin for CharacterPlugin {
 #[derive(Component)]
 pub struct Player;
 
-/// A [`Message`] written for a movement input action.
-#[derive(Message)]
-pub enum MovementAction {
+/// A movement event
+#[derive(EntityEvent)]
+pub struct MovementEvent {
+    pub entity: Entity,
+    pub kind: MovementEventKind,
+}
+
+#[derive(Clone, Copy)]
+pub enum MovementEventKind {
     Move(Vec2),
     Jump,
 }
@@ -87,8 +92,9 @@ impl Grounded {
 
 /// Sends [`MovementAction`] events based on keyboard input.
 fn keyboard_input(
-    mut movement_writer: MessageWriter<MovementAction>,
+    mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    players: Query<Entity, With<Player>>,
 ) {
     let up = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
     let down = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
@@ -100,26 +106,51 @@ fn keyboard_input(
     let direction = Vec2::new(horizontal as f32, vertical as f32).clamp_length_max(1.0);
 
     if direction != Vec2::ZERO {
-        movement_writer.write(MovementAction::Move(direction));
+        for entity in players.iter() {
+            commands.trigger(MovementEvent {
+                entity,
+                kind: MovementEventKind::Move(direction),
+            });
+        }
     }
 
     if keyboard_input.just_pressed(KeyCode::Space) {
-        movement_writer.write(MovementAction::Jump);
+        for entity in players.iter() {
+            commands.trigger(MovementEvent {
+                entity,
+                kind: MovementEventKind::Jump,
+            });
+        }
     }
 }
 
 /// Sends [`MovementAction`] events based on gamepad input.
-fn gamepad_input(mut movement_writer: MessageWriter<MovementAction>, gamepads: Query<&Gamepad>) {
+fn gamepad_input(
+    mut commands: Commands,
+    gamepads: Query<&Gamepad>,
+    players: Query<Entity, With<Player>>,
+) {
     for gamepad in gamepads.iter() {
         if let (Some(x), Some(y)) = (
             gamepad.get(GamepadAxis::LeftStickX),
             gamepad.get(GamepadAxis::LeftStickY),
         ) {
-            movement_writer.write(MovementAction::Move(Vec2::new(x, y).clamp_length_max(1.0)));
+            let direction = Vec2::new(x, y).clamp_length_max(1.0);
+            for entity in players.iter() {
+                commands.trigger(MovementEvent {
+                    entity,
+                    kind: MovementEventKind::Move(direction),
+                });
+            }
         }
 
         if gamepad.just_pressed(GamepadButton::South) {
-            movement_writer.write(MovementAction::Jump);
+            for entity in players.iter() {
+                commands.trigger(MovementEvent {
+                    entity,
+                    kind: MovementEventKind::Jump,
+                });
+            }
         }
     }
 }
@@ -161,7 +192,6 @@ fn update_grounded(
 
         if let Some(ground_normal) = steepest_ground_normal(ground_normals) {
             *grounded = Grounded(Some(ground_normal));
-            debug!(?ground_normal, "Grounded");
         } else {
             *grounded = Grounded(None);
         }
@@ -170,8 +200,8 @@ fn update_grounded(
 
 /// Responds to [`MovementAction`] events and moves character controllers accordingly.
 fn movement(
+    on: On<MovementEvent>,
     time: Res<Time>,
-    mut movement_reader: MessageReader<MovementAction>,
     mut controllers: Query<(
         &CharacterController,
         &mut LinearVelocity,
@@ -181,21 +211,21 @@ fn movement(
 ) {
     let delta_time = time.delta_secs();
 
-    for event in movement_reader.read() {
-        for (controller, mut linear_velocity, grounded, transform) in &mut controllers {
-            match event {
-                MovementAction::Move(direction) => {
-                    let mut direction =
-                        transform.forward() * direction.y + transform.right() * direction.x;
-                    if let Some(ground_normal) = grounded.0 {
-                        direction = direction - ground_normal * direction.dot(ground_normal);
-                    }
-                    linear_velocity.0 += direction * controller.movement_acceleration * delta_time;
+    if let Ok((controller, mut linear_velocity, grounded, transform)) =
+        controllers.get_mut(on.event().entity)
+    {
+        match on.event().kind {
+            MovementEventKind::Move(direction) => {
+                let mut direction =
+                    transform.forward() * direction.y + transform.right() * direction.x;
+                if let Some(ground_normal) = grounded.0 {
+                    direction = direction - ground_normal * direction.dot(ground_normal);
                 }
-                MovementAction::Jump => {
-                    if grounded.is_grounded() {
-                        linear_velocity.y = controller.jump_impulse;
-                    }
+                linear_velocity.0 += direction * controller.movement_acceleration * delta_time;
+            }
+            MovementEventKind::Jump => {
+                if grounded.is_grounded() {
+                    linear_velocity.y = controller.jump_impulse;
                 }
             }
         }

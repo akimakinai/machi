@@ -6,6 +6,7 @@ impl Plugin for PausePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<Pause>()
             .configure_sets(FixedUpdate, PausableSystems.run_if(in_state(Pause(false))))
+            .configure_sets(Update, PausableSystems.run_if(in_state(Pause(false))))
             .add_systems(Update, toggle_pause)
             .add_systems(OnEnter(Pause(true)), pause_dim_on)
             .add_systems(OnExit(Pause(true)), pause_dim_off);
