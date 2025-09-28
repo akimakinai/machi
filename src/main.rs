@@ -66,7 +66,10 @@ fn main() {
 
 fn startup(mut commands: Commands) {
     commands.spawn((
-        DirectionalLight { ..default() },
+        DirectionalLight {
+            shadows_enabled: true,
+            ..default()
+        },
         Transform::from_rotation(Quat::from_euler(
             EulerRot::XYZ,
             -std::f32::consts::FRAC_PI_4,
@@ -152,11 +155,7 @@ fn spawn_player(
             Player,
         ))
         .with_children(|c| {
-            c.spawn((
-                Camera3d::default(),
-                Transform::from_scale(Vec3::splat(2.0)),
-                PlayerCamera,
-            ));
+            c.spawn((Camera3d::default(), PlayerCamera));
             let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
             slots[0] = ItemStack {
                 item_id: ItemId(1),

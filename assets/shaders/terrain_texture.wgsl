@@ -5,13 +5,14 @@
     pbr_types::{STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT, PbrInput, pbr_input_new},
     pbr_functions as fns,
     pbr_bindings,
+    pbr_fragment::pbr_input_from_standard_material,
 }
 #import bevy_core_pipeline::tonemapping::tone_mapping
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var my_array_texture: texture_2d_array<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var my_array_texture_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var my_array_normal: texture_2d_array<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(3) var my_array_normal_sampler: sampler;
+@group(#{MATERIAL_BIND_GROUP}) @binding(100) var my_array_texture: texture_2d_array<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(101) var my_array_texture_sampler: sampler;
+@group(#{MATERIAL_BIND_GROUP}) @binding(102) var my_array_normal: texture_2d_array<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(103) var my_array_normal_sampler: sampler;
 
 fn sample_color(layer: u32, pos: vec3<f32>, tri_w: vec3<f32>) -> vec4<f32> {
     // Triplanar texture mapping
@@ -42,7 +43,7 @@ fn fragment(
 
     // Prepare a 'processed' StandardMaterial by sampling all textures to resolve
     // the material members
-    var pbr_input: PbrInput = pbr_input_new();
+    var pbr_input: PbrInput = pbr_input_from_standard_material(mesh, is_front);
     let double_sided = (pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT) != 0u;
     pbr_input.frag_coord = mesh.position;
     pbr_input.world_position = mesh.world_position;

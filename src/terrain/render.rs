@@ -5,6 +5,7 @@ use bevy::{
     ecs::entity::{EntityHashMap, EntityHashSet},
     image::ImageAddressMode,
     mesh::{Indices, VertexAttributeValues},
+    pbr::{ExtendedMaterial, MaterialExtension},
     platform::collections::HashMap,
     prelude::*,
     render::render_resource::AsBindGroup,
@@ -24,7 +25,7 @@ impl Plugin for RenderPlugin {
         app.init_resource::<RenderPluginSettings>()
             .init_resource::<RenderChunkMap>()
             .add_message::<RenderChunkSpawned>()
-            .add_plugins(MaterialPlugin::<ArrayTextureMaterial>::default())
+            .add_plugins(MaterialPlugin::<ExtendedArrayTextureMaterial>::default())
             .add_systems(Startup, setup_terrain_texture)
             .add_systems(Update, create_array_texture)
             .add_systems(Update, generate_terrain_mesh)
@@ -54,24 +55,26 @@ struct TerrainTexture {
     array_generated: bool,
     array_texture: Handle<Image>,
     array_normal: Handle<Image>,
-    material_handle: Handle<ArrayTextureMaterial>,
+    material_handle: Handle<ExtendedArrayTextureMaterial>,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 struct ArrayTextureMaterial {
-    #[texture(0, dimension = "2d_array")]
-    #[sampler(1)]
+    #[texture(100, dimension = "2d_array")]
+    #[sampler(101)]
     array_texture: Handle<Image>,
-    #[texture(2, dimension = "2d_array")]
-    #[sampler(3)]
+    #[texture(102, dimension = "2d_array")]
+    #[sampler(103)]
     array_normal: Handle<Image>,
 }
 
-impl Material for ArrayTextureMaterial {
+impl MaterialExtension for ArrayTextureMaterial {
     fn fragment_shader() -> ShaderRef {
         TERRAIN_SHADER_PATH.into()
     }
 }
+
+type ExtendedArrayTextureMaterial = ExtendedMaterial<StandardMaterial, ArrayTextureMaterial>;
 
 fn setup_terrain_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.insert_resource(TerrainTexture {
@@ -86,7 +89,7 @@ fn create_array_texture(
     mut terrain_texture: ResMut<TerrainTexture>,
     asset_server: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<ArrayTextureMaterial>>,
+    mut materials: ResMut<Assets<ExtendedArrayTextureMaterial>>,
 ) -> Result<()> {
     if terrain_texture.array_generated {
         return Ok(());
@@ -124,9 +127,12 @@ fn create_array_texture(
 
     materials.insert(
         terrain_texture.material_handle.id(),
-        ArrayTextureMaterial {
-            array_texture: terrain_texture.array_texture.clone(),
-            array_normal: terrain_texture.array_normal.clone(),
+        ExtendedMaterial {
+            base: StandardMaterial::default(),
+            extension: ArrayTextureMaterial {
+                array_texture: terrain_texture.array_texture.clone(),
+                array_normal: terrain_texture.array_normal.clone(),
+            },
         },
     )?;
 

@@ -233,6 +233,7 @@ fn update_inventory_slots(
     Ok(())
 }
 
+// Taken from https://bevy.org/examples-webgpu/3d-rendering/3d-shapes/
 fn uv_debug_texture() -> Image {
     const TEXTURE_SIZE: usize = 8;
 
