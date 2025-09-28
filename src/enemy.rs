@@ -2,7 +2,7 @@ use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind::FUCHSIA_400, prelude::*};
 
 use crate::{
-    character::{CharacterController, MovementBundle, Player},
+    character::{CharacterController, Player},
     pause::PausableSystems,
     physics::GameLayer,
 };
@@ -37,8 +37,7 @@ fn spawn_enemy(
         Friction::new(0.5),
         collider,
         RigidBody::Dynamic,
-        CharacterController,
-        MovementBundle::default(),
+        CharacterController::default(),
         Transform::from_translation(Vec3::new(15.0, 20.0, 5.0)),
         CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain]),
     ));

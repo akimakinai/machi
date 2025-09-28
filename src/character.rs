@@ -42,7 +42,23 @@ pub enum MovementAction {
 /// A marker component indicating that an entity is using a character controller.
 #[derive(Component)]
 #[require(RigidBody, Collider, LockedAxes::ROTATION_LOCKED, Grounded)]
-pub struct CharacterController;
+pub struct CharacterController {
+    pub movement_acceleration: f32,
+    pub movement_damping_factor: f32,
+    pub jump_impulse: f32,
+    pub max_slope_angle: Option<f32>,
+}
+
+impl Default for CharacterController {
+    fn default() -> Self {
+        Self {
+            movement_acceleration: 60.0,
+            movement_damping_factor: 0.9,
+            jump_impulse: 7.0,
+            max_slope_angle: Some(PI * 0.45),
+        }
+    }
+}
 
 fn add_ground_shape_caster(
     on: On<Add, CharacterController>,
@@ -66,67 +82,6 @@ pub struct Grounded(Option<Vec3>);
 impl Grounded {
     fn is_grounded(&self) -> bool {
         self.0.is_some()
-    }
-}
-
-/// The acceleration used for character movement.
-#[derive(Component)]
-pub struct MovementAcceleration(f32);
-
-/// The damping factor used for slowing down movement.
-#[derive(Component)]
-pub struct MovementDampingFactor(f32);
-
-/// The strength of a jump.
-#[derive(Component)]
-pub struct JumpImpulse(f32);
-
-/// The maximum angle a slope can have for a character controller
-/// to be able to climb and jump. If the slope is steeper than this angle,
-/// the character will slide down.
-#[derive(Component)]
-pub struct MaxSlopeAngle(f32);
-
-// /// A bundle that contains the components needed for a basic
-// /// kinematic character controller.
-// #[derive(Bundle)]
-// pub struct CharacterControllerBundle {
-//     character_controller: CharacterController,
-//     body: RigidBody,
-//     collider: Collider,
-//     ground_caster: ShapeCaster,
-//     locked_axes: LockedAxes,
-//     movement: MovementBundle,
-// }
-
-/// A bundle that contains components for character movement.
-#[derive(Bundle)]
-pub struct MovementBundle {
-    pub acceleration: MovementAcceleration,
-    pub damping: MovementDampingFactor,
-    pub jump_impulse: JumpImpulse,
-    pub max_slope_angle: MaxSlopeAngle,
-}
-
-impl MovementBundle {
-    pub const fn new(
-        acceleration: f32,
-        damping: f32,
-        jump_impulse: f32,
-        max_slope_angle: f32,
-    ) -> Self {
-        Self {
-            acceleration: MovementAcceleration(acceleration),
-            damping: MovementDampingFactor(damping),
-            jump_impulse: JumpImpulse(jump_impulse),
-            max_slope_angle: MaxSlopeAngle(max_slope_angle),
-        }
-    }
-}
-
-impl Default for MovementBundle {
-    fn default() -> Self {
-        Self::new(60.0, 0.9, 7.0, PI * 0.45)
     }
 }
 
@@ -172,17 +127,17 @@ fn gamepad_input(mut movement_writer: MessageWriter<MovementAction>, gamepads: Q
 /// Updates the [`Grounded`] status for character controllers.
 fn update_grounded(
     mut query: Query<
-        (&ShapeHits, &Rotation, Option<&MaxSlopeAngle>, &mut Grounded),
+        (&ShapeHits, &Rotation, &CharacterController, &mut Grounded),
         (With<CharacterController>, With<Player>),
     >,
 ) {
-    for (hits, rotation, max_slope_angle, mut grounded) in &mut query {
+    for (hits, rotation, controller, mut grounded) in &mut query {
         // The character is grounded if the shape caster has a hit with a normal
         // that isn't too steep.
         let ground_normals = hits.iter().filter_map(|hit| {
-            let ground_normal = rotation * -hit.normal2;
-            if let Some(angle) = max_slope_angle {
-                if ground_normal.angle_between(Vec3::Y).abs() <= angle.0 {
+            let ground_normal: Vec3 = rotation * -hit.normal2;
+            if let Some(max_slope_angle) = controller.max_slope_angle {
+                if ground_normal.angle_between(Vec3::Y).abs() <= max_slope_angle {
                     return Some(ground_normal);
                 }
             } else {
@@ -218,8 +173,7 @@ fn movement(
     time: Res<Time>,
     mut movement_reader: MessageReader<MovementAction>,
     mut controllers: Query<(
-        &MovementAcceleration,
-        &JumpImpulse,
+        &CharacterController,
         &mut LinearVelocity,
         &Grounded,
         &Transform,
@@ -228,9 +182,7 @@ fn movement(
     let delta_time = time.delta_secs();
 
     for event in movement_reader.read() {
-        for (movement_acceleration, jump_impulse, mut linear_velocity, grounded, transform) in
-            &mut controllers
-        {
+        for (controller, mut linear_velocity, grounded, transform) in &mut controllers {
             match event {
                 MovementAction::Move(direction) => {
                     let mut direction =
@@ -238,11 +190,11 @@ fn movement(
                     if let Some(ground_normal) = grounded.0 {
                         direction = direction - ground_normal * direction.dot(ground_normal);
                     }
-                    linear_velocity.0 += direction * movement_acceleration.0 * delta_time;
+                    linear_velocity.0 += direction * controller.movement_acceleration * delta_time;
                 }
                 MovementAction::Jump => {
                     if grounded.is_grounded() {
-                        linear_velocity.y = jump_impulse.0;
+                        linear_velocity.y = controller.jump_impulse;
                     }
                 }
             }
@@ -251,11 +203,11 @@ fn movement(
 }
 
 /// Slows down movement in the XZ plane.
-fn apply_movement_damping(mut query: Query<(&MovementDampingFactor, &mut LinearVelocity)>) {
-    for (damping_factor, mut linear_velocity) in &mut query {
+fn apply_movement_damping(mut query: Query<(&CharacterController, &mut LinearVelocity)>) {
+    for (controller, mut linear_velocity) in &mut query {
         // We could use `LinearDamping`, but we don't want to dampen movement along the Y axis
-        linear_velocity.x *= damping_factor.0;
-        linear_velocity.z *= damping_factor.0;
+        linear_velocity.x *= controller.movement_damping_factor;
+        linear_velocity.z *= controller.movement_damping_factor;
     }
 }
 
