@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::inventory::Inventory;
+use crate::{inventory::Inventory, ui::block_icon::BlockIconMaterial};
 
 pub struct InventoryUiPlugin;
 
@@ -48,6 +48,7 @@ pub fn build_inventory_root(
     In(inventory): In<Entity>,
     mut commands: Commands,
     inventories: Query<(NameOrEntity, &Inventory)>,
+    mut block_icon_mats: ResMut<Assets<BlockIconMaterial>>,
 ) {
     let slot_size = 60.0;
     let slot_gap = 8.0;
@@ -113,6 +114,19 @@ pub fn build_inventory_root(
                             BorderRadius::all(px(2.0)),
                         ));
                         slot.with_children(|slot| {
+                            slot.spawn((
+                                MaterialNode(block_icon_mats.add(BlockIconMaterial {
+                                        // icon: Default::default(),
+                                    })),
+                                Node {
+                                    position_type: PositionType::Absolute,
+                                    top: Val::Px(0.0),
+                                    left: Val::Px(0.0),
+                                    width: percent(100.0),
+                                    height: percent(100.0),
+                                    ..default()
+                                },
+                            ));
                             slot.spawn((
                                 Name::new("Count"),
                                 Node {
