@@ -43,6 +43,7 @@ impl BlockId {
     }
 
     /// Blocks rendered as liquids
+    #[expect(dead_code)]
     pub const fn is_liquid(self) -> bool {
         self.0 > 32 && self.0 <= 64
     }

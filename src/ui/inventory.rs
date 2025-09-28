@@ -30,9 +30,11 @@ pub enum InventoryState {
 #[require(Node)]
 pub struct InventoryUiRoot {
     // TODO: use moonshine-kind
+    #[expect(dead_code)]
     pub chest_inventory: Option<Entity>,
     pub inventory: Entity,
     /// Treats the last N slots in `inventory` as hotbar slots
+    #[expect(dead_code)]
     pub hotbar: Option<u32>,
 }
 
