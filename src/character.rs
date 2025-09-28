@@ -1,116 +1,286 @@
-use avian3d::prelude::{forces::ForcesItem, *};
+use std::f32::consts::PI;
+
+// Based on https://github.com/Jondolf/avian/blob/cf1d88a2c032a215633a8c32e8e4bb08b16ae790/crates/avian3d/examples/dynamic_character_3d/plugin.rs
+use avian3d::prelude::*;
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 
-use crate::{PlayerCamera, pause::PausableSystems, physics::GameLayer};
+use crate::{PlayerCamera, pause::PausableSystems};
 
 pub struct CharacterPlugin;
 
 impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(character_controller_added).add_systems(
-            FixedUpdate,
-            (character_movement, player_control).in_set(PausableSystems),
-        );
+        app.add_message::<MovementAction>()
+            .add_observer(add_ground_shape_caster)
+            .add_systems(
+                Update,
+                (
+                    keyboard_input,
+                    gamepad_input,
+                    update_grounded,
+                    movement,
+                    apply_movement_damping,
+                )
+                    .chain()
+                    .in_set(PausableSystems),
+            )
+            .add_systems(Update, player_camera_control.in_set(PausableSystems));
     }
 }
 
-/// Simple floating character controller.
-#[derive(Component)]
-#[require(Transform, RigidBody::Dynamic, LockedAxes::ROTATION_LOCKED)]
-pub struct CharacterController {
-    pub speed: f32,
-    pub floating_height: f32,
-    pub shape: Collider,
-}
-
-#[derive(Component)]
-struct CharacterControllerSensor;
-
-fn character_controller_added(
-    on: On<Add, CharacterController>,
-    mut commands: Commands,
-    controllers: Query<&CharacterController>,
-) {
-    let id = on.event_target();
-    let collider = controllers.get(id).unwrap().shape.clone();
-
-    commands.entity(id).with_child((
-        CharacterControllerSensor,
-        Transform::default(),
-        ShapeCaster::new(collider, Vec3::ZERO, Quat::default(), Dir3::NEG_Y).with_query_filter(
-            SpatialQueryFilter::from_excluded_entities([id]).with_mask(GameLayer::Terrain),
-        ),
-    ));
-}
-
-fn character_movement(
-    mut controllers: Query<(&CharacterController, Forces), With<CharacterController>>,
-    sensors: Query<(NameOrEntity, &ShapeHits, &ChildOf), With<CharacterControllerSensor>>,
-) {
-    for (name, sensor, child_of) in &sensors {
-        let Ok((cc, forces)) = controllers.get_mut(child_of.parent()) else {
-            error!("Parent of CharacterControllerSensor({name}) is not a CharacterController");
-            continue;
-        };
-        character_movement_inner(cc, sensor, forces);
-    }
-}
-
-fn character_movement_inner(cc: &CharacterController, hits: &ShapeHits, mut forces: ForcesItem) {
-    let force = hits
-        .iter()
-        .map(|hit| (cc.floating_height - hit.distance) * hit.normal1)
-        .sum::<Vec3>();
-    if force.length_squared() < 0.01 {
-        return;
-    }
-    forces.apply_force(force);
-}
-
+/// Marker for the character to be controlled by the player.
 #[derive(Component)]
 pub struct Player;
 
-fn player_control(
-    mouse: Res<AccumulatedMouseMotion>,
-    kb: Res<ButtonInput<KeyCode>>,
-    mut controllers: Query<(&CharacterController, &mut LinearVelocity), With<Player>>,
-    mut player_camera: Query<&mut Transform, With<PlayerCamera>>,
-    time: Res<Time>,
-) -> Result<()> {
-    let mut camera_transform = player_camera.single_mut()?;
+/// A [`Message`] written for a movement input action.
+#[derive(Message)]
+pub enum MovementAction {
+    Move(Vec2),
+    Jump,
+}
 
+/// A marker component indicating that an entity is using a character controller.
+#[derive(Component)]
+#[require(RigidBody, Collider, LockedAxes::ROTATION_LOCKED, Grounded)]
+pub struct CharacterController;
+
+fn add_ground_shape_caster(
+    on: On<Add, CharacterController>,
+    mut commands: Commands,
+    colliders: Query<&Collider>,
+) {
+    let collider = colliders.get(on.entity).unwrap();
+    let mut caster_shape = collider.clone();
+    // Create shape caster as a slightly smaller version of collider
+    caster_shape.set_scale(Vec3::ONE * 0.99, 10);
+    commands.entity(on.entity).insert(
+        ShapeCaster::new(caster_shape, Vec3::ZERO, Quat::default(), Dir3::NEG_Y)
+            .with_max_distance(0.2),
+    );
+}
+
+/// A marker component indicating that an entity is on the ground.
+#[derive(Component, Default)]
+pub struct Grounded(Option<Vec3>);
+
+impl Grounded {
+    fn is_grounded(&self) -> bool {
+        self.0.is_some()
+    }
+}
+
+/// The acceleration used for character movement.
+#[derive(Component)]
+pub struct MovementAcceleration(f32);
+
+/// The damping factor used for slowing down movement.
+#[derive(Component)]
+pub struct MovementDampingFactor(f32);
+
+/// The strength of a jump.
+#[derive(Component)]
+pub struct JumpImpulse(f32);
+
+/// The maximum angle a slope can have for a character controller
+/// to be able to climb and jump. If the slope is steeper than this angle,
+/// the character will slide down.
+#[derive(Component)]
+pub struct MaxSlopeAngle(f32);
+
+// /// A bundle that contains the components needed for a basic
+// /// kinematic character controller.
+// #[derive(Bundle)]
+// pub struct CharacterControllerBundle {
+//     character_controller: CharacterController,
+//     body: RigidBody,
+//     collider: Collider,
+//     ground_caster: ShapeCaster,
+//     locked_axes: LockedAxes,
+//     movement: MovementBundle,
+// }
+
+/// A bundle that contains components for character movement.
+#[derive(Bundle)]
+pub struct MovementBundle {
+    pub acceleration: MovementAcceleration,
+    pub damping: MovementDampingFactor,
+    pub jump_impulse: JumpImpulse,
+    pub max_slope_angle: MaxSlopeAngle,
+}
+
+impl MovementBundle {
+    pub const fn new(
+        acceleration: f32,
+        damping: f32,
+        jump_impulse: f32,
+        max_slope_angle: f32,
+    ) -> Self {
+        Self {
+            acceleration: MovementAcceleration(acceleration),
+            damping: MovementDampingFactor(damping),
+            jump_impulse: JumpImpulse(jump_impulse),
+            max_slope_angle: MaxSlopeAngle(max_slope_angle),
+        }
+    }
+}
+
+impl Default for MovementBundle {
+    fn default() -> Self {
+        Self::new(60.0, 0.9, 7.0, PI * 0.45)
+    }
+}
+
+/// Sends [`MovementAction`] events based on keyboard input.
+fn keyboard_input(
+    mut movement_writer: MessageWriter<MovementAction>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    let up = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
+    let down = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
+    let left = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
+    let right = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
+
+    let horizontal = right as i8 - left as i8;
+    let vertical = up as i8 - down as i8;
+    let direction = Vec2::new(horizontal as f32, vertical as f32).clamp_length_max(1.0);
+
+    if direction != Vec2::ZERO {
+        movement_writer.write(MovementAction::Move(direction));
+    }
+
+    if keyboard_input.just_pressed(KeyCode::Space) {
+        movement_writer.write(MovementAction::Jump);
+    }
+}
+
+/// Sends [`MovementAction`] events based on gamepad input.
+fn gamepad_input(mut movement_writer: MessageWriter<MovementAction>, gamepads: Query<&Gamepad>) {
+    for gamepad in gamepads.iter() {
+        if let (Some(x), Some(y)) = (
+            gamepad.get(GamepadAxis::LeftStickX),
+            gamepad.get(GamepadAxis::LeftStickY),
+        ) {
+            movement_writer.write(MovementAction::Move(Vec2::new(x, y).clamp_length_max(1.0)));
+        }
+
+        if gamepad.just_pressed(GamepadButton::South) {
+            movement_writer.write(MovementAction::Jump);
+        }
+    }
+}
+
+/// Updates the [`Grounded`] status for character controllers.
+fn update_grounded(
+    mut query: Query<
+        (&ShapeHits, &Rotation, Option<&MaxSlopeAngle>, &mut Grounded),
+        (With<CharacterController>, With<Player>),
+    >,
+) {
+    for (hits, rotation, max_slope_angle, mut grounded) in &mut query {
+        // The character is grounded if the shape caster has a hit with a normal
+        // that isn't too steep.
+        let ground_normals = hits.iter().filter_map(|hit| {
+            let ground_normal = rotation * -hit.normal2;
+            if let Some(angle) = max_slope_angle {
+                if ground_normal.angle_between(Vec3::Y).abs() <= angle.0 {
+                    return Some(ground_normal);
+                }
+            } else {
+                return Some(ground_normal);
+            }
+            None
+        });
+
+        // Get the steepest ground normal (lowest Y component)
+        fn steepest_ground_normal(it: impl Iterator<Item = Vec3>) -> Option<Vec3> {
+            let mut min: Option<Vec3> = None;
+            for v in it {
+                min = Some(match min {
+                    Some(m) if v.y < m.y => v,
+                    Some(m) => m,
+                    None => v,
+                });
+            }
+            min
+        }
+
+        if let Some(ground_normal) = steepest_ground_normal(ground_normals) {
+            *grounded = Grounded(Some(ground_normal));
+            debug!(?ground_normal, "Grounded");
+        } else {
+            *grounded = Grounded(None);
+        }
+    }
+}
+
+/// Responds to [`MovementAction`] events and moves character controllers accordingly.
+fn movement(
+    time: Res<Time>,
+    mut movement_reader: MessageReader<MovementAction>,
+    mut controllers: Query<(
+        &MovementAcceleration,
+        &JumpImpulse,
+        &mut LinearVelocity,
+        &Grounded,
+        &Transform,
+    )>,
+) {
+    let delta_time = time.delta_secs();
+
+    for event in movement_reader.read() {
+        for (movement_acceleration, jump_impulse, mut linear_velocity, grounded, transform) in
+            &mut controllers
+        {
+            match event {
+                MovementAction::Move(direction) => {
+                    let mut direction =
+                        transform.forward() * direction.y + transform.right() * direction.x;
+                    if let Some(ground_normal) = grounded.0 {
+                        direction = direction - ground_normal * direction.dot(ground_normal);
+                    }
+                    linear_velocity.0 += direction * movement_acceleration.0 * delta_time;
+                }
+                MovementAction::Jump => {
+                    if grounded.is_grounded() {
+                        linear_velocity.y = jump_impulse.0;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Slows down movement in the XZ plane.
+fn apply_movement_damping(mut query: Query<(&MovementDampingFactor, &mut LinearVelocity)>) {
+    for (damping_factor, mut linear_velocity) in &mut query {
+        // We could use `LinearDamping`, but we don't want to dampen movement along the Y axis
+        linear_velocity.x *= damping_factor.0;
+        linear_velocity.z *= damping_factor.0;
+    }
+}
+
+fn player_camera_control(
+    mouse: Res<AccumulatedMouseMotion>,
+    mut player_camera: Query<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
+    mut players: Query<&mut Transform, (With<Player>, Without<PlayerCamera>)>,
+) -> Result<()> {
+    const MOUSE_SENSITIVITY: f32 = 0.01;
+
+    // Apply pitch to camera
+    let mut camera_transform = player_camera.single_mut()?;
     let mut rotation = camera_transform.rotation.to_euler(EulerRot::YXZ);
-    rotation.0 += -mouse.delta.x * 0.5 * time.delta_secs();
-    rotation.1 = (rotation.1 + -mouse.delta.y * 0.5 * time.delta_secs()).clamp(
+    // TODO: should be divided by resolution
+    rotation.1 = (rotation.1 + -mouse.delta.y * MOUSE_SENSITIVITY).clamp(
         -std::f32::consts::FRAC_PI_2 + 0.01,
         std::f32::consts::FRAC_PI_2 - 0.01,
     );
     camera_transform.rotation = Quat::from_euler(EulerRot::YXZ, rotation.0, rotation.1, 0.0);
 
-    let (cc, mut velocity) = controllers.single_mut()?;
-    let mut direction = Vec3::ZERO;
-    if kb.pressed(KeyCode::KeyW) {
-        direction += camera_transform.forward().as_vec3();
-    }
-    if kb.pressed(KeyCode::KeyS) {
-        direction += camera_transform.back().as_vec3();
-    }
-    if kb.pressed(KeyCode::KeyA) {
-        direction += camera_transform.left().as_vec3();
-    }
-    if kb.pressed(KeyCode::KeyD) {
-        direction += camera_transform.right().as_vec3();
-    }
-
-    if direction == Vec3::ZERO {
-        // FIXME: setting velocity to exact zero causes panic in Avian
-        if velocity.0.xz().length_squared() > 0.01 {
-            velocity.0 *= Vec3::new(0.01, 1.0, 0.01);
-        }
-        return Ok(());
-    }
-    let direction = direction.normalize();
-    velocity.0 = (direction * cc.speed).with_y(velocity.0.y);
+    // Apply yaw to player, which the character controller uses for movement direction
+    let mut player_transform = players.single_mut()?;
+    let mut rotation = player_transform.rotation.to_euler(EulerRot::YXZ);
+    rotation.0 += -mouse.delta.x * MOUSE_SENSITIVITY;
+    player_transform.rotation = Quat::from_euler(EulerRot::YXZ, rotation.0, 0.0, 0.0);
 
     Ok(())
 }

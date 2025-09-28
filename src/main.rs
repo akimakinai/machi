@@ -8,7 +8,7 @@ use bevy::{
 use tracing_subscriber::Layer;
 
 use crate::{
-    character::{CharacterController, CharacterPlugin, Player},
+    character::{CharacterController, CharacterPlugin, MovementBundle, Player},
     dev_util::{DevUtilPlugin, log_window::LogWindowLayer},
     enemy::EnemyPlugin,
     inventory::{Inventory, ItemId, ItemStack},
@@ -135,18 +135,9 @@ fn spawn_player(
             Name::new("Player"),
             Mesh3d(meshes.add(Mesh::from(shape))),
             MeshMaterial3d(materials.add(StandardMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.0)))),
-            Friction::new(1.0),
-            CharacterController {
-                speed: 10.0,
-                floating_height: 5.0,
-                shape: Cylinder {
-                    radius: 1.0,
-                    half_height: 1.1,
-                }
-                .collider(),
-            },
+            CharacterController,
+            MovementBundle::default(),
             Transform::from_translation(Vec3::new(8.0, 25.0, 8.0)),
-            Mass(1.0),
             collider,
             CollisionLayers::new(
                 [GameLayer::Character],
