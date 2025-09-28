@@ -3,6 +3,7 @@ use bevy::{color::palettes::tailwind::FUCHSIA_400, prelude::*};
 
 use crate::{
     character::{CharacterController, Player},
+    pause::PausableSystems,
     physics::GameLayer,
 };
 
@@ -11,7 +12,7 @@ pub struct EnemyPlugin;
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_enemy)
-            .add_systems(FixedUpdate, enemy_behavior);
+            .add_systems(FixedUpdate, enemy_behavior.in_set(PausableSystems));
     }
 }
 

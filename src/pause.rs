@@ -58,7 +58,7 @@ fn pause_dim_on(mut commands: Commands) {
 
 fn pause_dim_off(
     mut commands: Commands,
-    query: Query<Entity, (With<Camera>, With<PauseDimmingScreen>)>,
+    query: Query<Entity, With<PauseDimmingScreen>>,
 ) {
     for entity in &query {
         commands.entity(entity).despawn();
