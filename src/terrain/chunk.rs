@@ -261,6 +261,28 @@ impl<'w, 's> WriteBlocks<'w, 's> {
             updated_chunks.push(neighbor_id);
         }
 
+        if local_x == 0
+            && local_z == 0
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z - 1))
+        {
+            updated_chunks.push(neighbor_id);
+        } else if local_x == 0
+            && local_z == (CHUNK_SIZE - 1) as i32
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z + 1))
+        {
+            updated_chunks.push(neighbor_id);
+        } else if local_x == (CHUNK_SIZE - 1) as i32
+            && local_z == 0
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z - 1))
+        {
+            updated_chunks.push(neighbor_id);
+        } else if local_x == (CHUNK_SIZE - 1) as i32
+            && local_z == (CHUNK_SIZE - 1) as i32
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z + 1))
+        {
+            updated_chunks.push(neighbor_id);
+        }
+
         self.writer
             .write_batch(updated_chunks.into_iter().map(ChunkUpdated));
 
