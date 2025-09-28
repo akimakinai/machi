@@ -2,7 +2,9 @@ use avian3d::prelude::*;
 use bevy::{
     ecs::error::DefaultErrorHandler,
     log::{DEFAULT_FILTER, LogPlugin},
+    post_process::bloom::Bloom,
     prelude::*,
+    render::view::Hdr,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use tracing_subscriber::Layer;
@@ -11,6 +13,7 @@ use crate::{
     character::{CharacterController, CharacterPlugin, Player},
     dev_util::{DevUtilPlugin, log_window::LogWindowLayer},
     enemy::EnemyPlugin,
+    explosion::ExplosionPlugin,
     inventory::{Inventory, ItemId, ItemStack},
     object::ObjectPlugin,
     pause::{Pause, PausePlugin},
@@ -27,6 +30,7 @@ mod character;
 // mod flycam;
 mod dev_util;
 mod enemy;
+mod explosion;
 mod inventory;
 mod object;
 mod pause;
@@ -52,6 +56,7 @@ fn main() {
         .add_plugins(CharacterPlugin)
         .add_plugins(EnemyPlugin)
         .add_plugins(ObjectPlugin)
+        .add_plugins(ExplosionPlugin)
         .add_plugins(UiPlugin)
         .add_plugins(DevUtilPlugin)
         .configure_sets(
@@ -145,7 +150,7 @@ fn spawn_player(
             Player,
         ))
         .with_children(|c| {
-            c.spawn((Camera3d::default(), PlayerCamera));
+            c.spawn((Camera3d::default(), Hdr, Bloom::default(), PlayerCamera));
             let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
             slots[0] = ItemStack {
                 item_id: ItemId(1),

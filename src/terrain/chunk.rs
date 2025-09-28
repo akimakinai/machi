@@ -80,9 +80,9 @@ impl Chunk {
 
     pub fn set_block(&mut self, position: IVec3, block: BlockId) {
         self.blocks[position.x as usize][position.y as usize][position.z as usize] = block;
-        // testing
+        let default_durability = if block == BlockId::AIR { 0.0 } else { 1.0 };
         self.durability[position.x as usize][position.y as usize][position.z as usize] =
-            rand::random::<f32>();
+            default_durability;
     }
 
     pub fn get_durability(&self, position: IVec3) -> f32 {
@@ -248,55 +248,98 @@ impl<'w, 's> WriteBlocks<'w, 's> {
         let mut chunk = self.chunks.get_mut(chunk_id)?;
         chunk.set_block(IVec3::new(local_x, local_y, local_z), block);
 
-        let mut updated_chunks = vec![chunk_id];
-
-        // update neighboring chunks if on edge
-        if local_x == 0
-            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z))
-        {
-            updated_chunks.push(neighbor_id);
-        } else if local_x == (CHUNK_SIZE - 1) as i32
-            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z))
-        {
-            updated_chunks.push(neighbor_id);
-        }
-
-        if local_z == 0
-            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z - 1))
-        {
-            updated_chunks.push(neighbor_id);
-        } else if local_z == (CHUNK_SIZE - 1) as i32
-            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z + 1))
-        {
-            updated_chunks.push(neighbor_id);
-        }
-
-        if local_x == 0
-            && local_z == 0
-            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z - 1))
-        {
-            updated_chunks.push(neighbor_id);
-        } else if local_x == 0
-            && local_z == (CHUNK_SIZE - 1) as i32
-            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z + 1))
-        {
-            updated_chunks.push(neighbor_id);
-        } else if local_x == (CHUNK_SIZE - 1) as i32
-            && local_z == 0
-            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z - 1))
-        {
-            updated_chunks.push(neighbor_id);
-        } else if local_x == (CHUNK_SIZE - 1) as i32
-            && local_z == (CHUNK_SIZE - 1) as i32
-            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z + 1))
-        {
-            updated_chunks.push(neighbor_id);
-        }
-
-        self.writer
-            .write_batch(updated_chunks.into_iter().map(ChunkUpdated));
+        self.trigger_update(chunk_x, chunk_z, IVec3::new(local_x, local_y, local_z));
 
         Ok(())
+    }
+
+    pub fn damage_block(&mut self, position: IVec3, damage: f32) -> Result<()> {
+        if damage <= 0.0 {
+            return Ok(());
+        }
+
+        let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
+        let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
+        let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
+        let local_y = position.y;
+        let local_z = position.z.rem_euclid(CHUNK_SIZE as i32);
+
+        if local_y < 0 || local_y >= CHUNK_HEIGHT as i32 {
+            return Ok(());
+        }
+
+        let chunk_id = *self
+            .chunk_map
+            .0
+            .get(&IVec2::new(chunk_x, chunk_z))
+            .ok_or(BevyError::from("Chunk not found"))?;
+
+        let mut chunk = self.chunks.get_mut(chunk_id)?;
+        let local = IVec3::new(local_x, local_y, local_z);
+        if chunk.get_block(local) == BlockId::AIR {
+            return Ok(());
+        }
+
+        let durability =
+            &mut chunk.durability[local.x as usize][local.y as usize][local.z as usize];
+        *durability -= damage;
+
+        if *durability <= 0.0 {
+            self.set_block(position, BlockId::AIR)?;
+        } else {
+            self.trigger_update(chunk_x, chunk_z, IVec3::new(local_x, local_y, local_z));
+        }
+
+        Ok(())
+    }
+
+    fn trigger_update(&mut self, chunk_x: i32, chunk_z: i32, local_pos: IVec3) {
+        if let Some(&id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z)) {
+            self.writer.write(ChunkUpdated(id));
+        }
+
+        // update neighboring chunks if on edge
+        if local_pos.x == 0
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z))
+        {
+            self.writer.write(ChunkUpdated(neighbor_id));
+        } else if local_pos.x == (CHUNK_SIZE - 1) as i32
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z))
+        {
+            self.writer.write(ChunkUpdated(neighbor_id));
+        }
+
+        if local_pos.z == 0
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z - 1))
+        {
+            self.writer.write(ChunkUpdated(neighbor_id));
+        } else if local_pos.z == (CHUNK_SIZE - 1) as i32
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z + 1))
+        {
+            self.writer.write(ChunkUpdated(neighbor_id));
+        }
+
+        if local_pos.x == 0
+            && local_pos.z == 0
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z - 1))
+        {
+            self.writer.write(ChunkUpdated(neighbor_id));
+        } else if local_pos.x == 0
+            && local_pos.z == (CHUNK_SIZE - 1) as i32
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x - 1, chunk_z + 1))
+        {
+            self.writer.write(ChunkUpdated(neighbor_id));
+        } else if local_pos.x == (CHUNK_SIZE - 1) as i32
+            && local_pos.z == 0
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z - 1))
+        {
+            self.writer.write(ChunkUpdated(neighbor_id));
+        } else if local_pos.x == (CHUNK_SIZE - 1) as i32
+            && local_pos.z == (CHUNK_SIZE - 1) as i32
+            && let Some(&neighbor_id) = self.chunk_map.0.get(&IVec2::new(chunk_x + 1, chunk_z + 1))
+        {
+            self.writer.write(ChunkUpdated(neighbor_id));
+        }
     }
 }
 
