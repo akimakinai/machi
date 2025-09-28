@@ -39,6 +39,9 @@ pub struct InventoryUiRoot {
 #[derive(Component)]
 struct InventoryUiSlot(usize);
 
+#[derive(Component)]
+struct SlotBlockIcon;
+
 // #E2A16F
 const INVENTORY_BACKGROUND: Color = Color::srgba_u8(0xE2, 0xA1, 0x6F, 0xC0);
 // #FFF0DD
@@ -133,6 +136,8 @@ pub fn build_inventory_root(
                                     height: percent(100.0),
                                     ..default()
                                 },
+                                Visibility::Hidden,
+                                SlotBlockIcon,
                             ));
                             slot.spawn((
                                 Name::new("Count"),
@@ -188,6 +193,7 @@ fn update_inventory_slots(
     inventories: Query<Ref<Inventory>>,
     children: Query<&Children>,
     mut texts: Query<&mut Text>,
+    mut block_icons: Query<&mut Visibility, With<SlotBlockIcon>>,
 ) -> Result<()> {
     for (root_id, root) in &roots {
         let inventory = inventories.get(root.inventory)?;
@@ -208,6 +214,16 @@ fn update_inventory_slots(
             for schild in children.get(child)?.iter() {
                 if let Ok(mut text) = texts.get_mut(schild) {
                     text.0 = num;
+                    break;
+                }
+            }
+            for schild in children.get(child)?.iter() {
+                if let Ok(mut visibility) = block_icons.get_mut(schild) {
+                    if inventory.slots[slot.0].is_some() {
+                        visibility.set_if_neq(Visibility::Visible);
+                    } else {
+                        visibility.set_if_neq(Visibility::Hidden);
+                    }
                     break;
                 }
             }
