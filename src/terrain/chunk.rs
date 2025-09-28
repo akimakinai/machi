@@ -9,7 +9,7 @@ use bevy::{
     prelude::*,
 };
 
-use crate::PlayerCamera;
+use crate::{PlayerCamera, inventory::ItemId};
 
 pub struct ChunkPlugin;
 
@@ -50,6 +50,10 @@ impl BlockId {
     /// Blocks rendered as cubes
     pub const fn is_solid(self) -> bool {
         self.0 > 64
+    }
+
+    pub fn as_item_id(self) -> ItemId {
+        ItemId(self.0 as u32)
     }
 }
 
@@ -95,8 +99,8 @@ fn remove_chunk_map(
 }
 
 #[derive(SystemParam)]
-pub struct BlockRayCast<'w, 's> {
-    chunks: Query<'w, 's, (Entity, Read<Chunk>)>,
+pub struct ReadBlocks<'w, 's> {
+    chunks: Query<'w, 's, Read<Chunk>>,
     chunk_map: Res<'w, ChunkMap>,
 }
 
@@ -123,7 +127,7 @@ impl HitFace {
     }
 }
 
-impl<'w, 's> BlockRayCast<'w, 's> {
+impl<'w, 's> ReadBlocks<'w, 's> {
     pub fn ray_cast(
         &self,
         origin: Vec3,
@@ -136,7 +140,7 @@ impl<'w, 's> BlockRayCast<'w, 's> {
 
         while traveled_distance < max_distance {
             let block_pos = current_position.floor().as_ivec3();
-            if let Some((block, entity)) = self.get_block(block_pos)
+            if let Ok((block, entity)) = self.get_block(block_pos)
                 && block != BlockId(0)
             {
                 let local = (current_position - step) - (block_pos.as_vec3() + Vec3::splat(0.5));
@@ -169,64 +173,49 @@ impl<'w, 's> BlockRayCast<'w, 's> {
         None
     }
 
-    fn get_block(&self, position: IVec3) -> Option<(BlockId, Entity)> {
-        let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
-        let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
-        let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
-        let local_y = position.y;
-        let local_z = position.z.rem_euclid(CHUNK_SIZE as i32);
+    fn get_block(&self, position: IVec3) -> Result<(BlockId, Entity)> {
+        get_block(&self.chunks, &self.chunk_map, position)
+    }
+}
 
-        if local_y < 0 {
-            return None;
-        }
+fn get_block(
+    chunks: &Query<Read<Chunk>>,
+    chunk_map: &Res<ChunkMap>,
+    position: IVec3,
+) -> Result<(BlockId, Entity)> {
+    let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
+    let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
+    let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
+    let local_y = position.y;
+    let local_z = position.z.rem_euclid(CHUNK_SIZE as i32);
 
-        let (entity, chunk) = self
-            .chunks
-            .get(*self.chunk_map.0.get(&IVec2::new(chunk_x, chunk_z))?)
-            .ok()?;
+    let entity = *chunk_map
+        .0
+        .get(&IVec2::new(chunk_x, chunk_z))
+        .ok_or_else(|| format!("Chunk not found at ({}, {})", chunk_x, chunk_z))?;
+    let chunk = chunks.get(entity)?;
 
-        if local_y < CHUNK_HEIGHT as i32 {
-            let block = chunk.get_block(IVec3::new(local_x, local_y, local_z));
-            Some((block, entity))
-        } else {
-            // Out of height bounds
-            Some((BlockId(0), entity))
-        }
+    if local_y < 0 {
+        Ok((BlockId(0), entity))
+    } else if local_y < CHUNK_HEIGHT as i32 {
+        let block = chunk.get_block(IVec3::new(local_x, local_y, local_z));
+        Ok((block, entity))
+    } else {
+        // Out of height bounds
+        Ok((BlockId(0), entity))
     }
 }
 
 #[derive(SystemParam)]
-pub struct Blocks<'w, 's> {
+pub struct WriteBlocks<'w, 's> {
     chunks: Query<'w, 's, Write<Chunk>>,
     chunk_map: Res<'w, ChunkMap>,
     writer: MessageWriter<'w, ChunkUpdated>,
 }
 
-impl<'w, 's> Blocks<'w, 's> {
-    pub fn get_block(&self, position: IVec3) -> Result<BlockId> {
-        let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
-        let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
-        let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
-        let local_y = position.y;
-        let local_z = position.z.rem_euclid(CHUNK_SIZE as i32);
-
-        if local_y < 0 {
-            return Ok(BlockId(0));
-        }
-
-        let chunk_id = *self
-            .chunk_map
-            .0
-            .get(&IVec2::new(chunk_x, chunk_z))
-            .ok_or(BevyError::from("Chunk not found"))?;
-
-        let chunk = self.chunks.get(chunk_id)?;
-        if local_y < CHUNK_HEIGHT as i32 {
-            Ok(chunk.get_block(IVec3::new(local_x, local_y, local_z)))
-        } else {
-            // Out of height bounds
-            Ok(BlockId(0))
-        }
+impl<'w, 's> WriteBlocks<'w, 's> {
+    pub fn get_block(&self, position: IVec3) -> Result<(BlockId, Entity)> {
+        get_block(&self.chunks.as_readonly(), &self.chunk_map, position)
     }
 
     pub fn set_block(&mut self, position: IVec3, block: BlockId) -> Result<()> {
@@ -290,7 +279,7 @@ pub struct HoveredBlock(pub Option<(IVec3, HitFace)>);
 
 fn block_hover(
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
-    block_raycast: BlockRayCast,
+    blocks: ReadBlocks,
     mut gizmos: Gizmos,
     mut hovered: ResMut<HoveredBlock>,
 ) -> Result<()> {
@@ -302,7 +291,7 @@ fn block_hover(
     let ray_direction = camera_transform.forward();
 
     if let Some((block_pos, face, _entity)) =
-        block_raycast.ray_cast(ray_origin, ray_direction.as_vec3(), 100.0)
+        blocks.ray_cast(ray_origin, ray_direction.as_vec3(), 100.0)
     {
         const GIZMO_COLOR: Color = Color::Srgba(bevy::color::palettes::css::YELLOW);
         let coord = block_pos.as_vec3();

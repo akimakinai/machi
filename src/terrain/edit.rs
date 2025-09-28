@@ -2,13 +2,13 @@ use avian3d::prelude::LinearVelocity;
 use bevy::{prelude::*, window::PrimaryWindow};
 
 use crate::{
-    inventory::{ItemId, ItemStack},
+    inventory::ItemStack,
     object::item_stack::{ItemStackObjAssets, create_item_stack_obj},
     pause::Pause,
     terrain::chunk::BlockId,
 };
 
-use super::chunk::{Blocks, HoveredBlock};
+use super::chunk::{HoveredBlock, WriteBlocks};
 
 pub struct EditPlugin;
 
@@ -29,7 +29,7 @@ fn startup(
 fn on_click(
     on: On<Pointer<Click>>,
     hovered: Res<HoveredBlock>,
-    mut blocks: Blocks,
+    mut blocks: WriteBlocks,
     mut commands: Commands,
     item_assets: Res<ItemStackObjAssets>,
     pause: Res<State<Pause>>,
@@ -43,8 +43,8 @@ fn on_click(
 
     match on.event().button {
         PointerButton::Primary => {
-            let get_id = blocks.get_block(block_pos.0)?;
-            if get_id.0 == 0 {
+            let block_id = blocks.get_block(block_pos.0)?.0;
+            if block_id == BlockId(0) {
                 return Ok(());
             }
 
@@ -56,8 +56,7 @@ fn on_click(
             ));
             commands.spawn(create_item_stack_obj(
                 ItemStack {
-                    // FIXME
-                    item_id: get_id.0 as ItemId,
+                    item_id: block_id.as_item_id(),
                     quantity: 1,
                 },
                 &item_assets,

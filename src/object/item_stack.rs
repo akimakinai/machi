@@ -103,14 +103,14 @@ impl FromWorld for ItemStackObjAssets {
         let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
         let mut material_map = HashMap::new();
         material_map.insert(
-            1,
+            ItemId(1),
             materials.add(StandardMaterial {
                 base_color: Color::srgb(0.0, 1.0, 0.0),
                 ..default()
             }),
         );
         material_map.insert(
-            2,
+            ItemId(2),
             materials.add(StandardMaterial {
                 base_color: Color::srgb(0.5, 0.5, 0.5),
                 ..default()

@@ -11,7 +11,7 @@ use crate::{
     character::{CharacterController, CharacterPlugin, Player},
     dev_util::{DevUtilPlugin, log_window::LogWindowLayer},
     enemy::EnemyPlugin,
-    inventory::{Inventory, ItemStack},
+    inventory::{Inventory, ItemId, ItemStack},
     object::ObjectPlugin,
     pause::{Pause, PausePlugin},
     physics::GameLayer,
@@ -159,12 +159,12 @@ fn spawn_player(
             ));
             let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
             slots[0] = ItemStack {
-                item_id: 1,
+                item_id: ItemId(1),
                 quantity: 64,
             }
             .into();
             slots[1] = ItemStack {
-                item_id: 2,
+                item_id: ItemId(2),
                 quantity: 32,
             }
             .into();

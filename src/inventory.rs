@@ -8,6 +8,7 @@ pub struct Inventory {
 }
 
 impl Inventory {
+    /// Returns `Err(remaining)` if there is not enough space.
     pub fn add_item_stack(&mut self, item_stack: ItemStack) -> Result<(), ItemStack> {
         let mut remaining = item_stack.quantity;
         for slot in self.slots.iter_mut() {
@@ -25,15 +26,13 @@ impl Inventory {
         }
         for slot in self.slots.iter_mut() {
             if slot.is_none() {
-                let to_add = remaining.min(MAX_QUANTITY);
+                // If the slot is empty, we can put all remaining items here
+                // since `remaining <= MAX_QUANTITY`.
                 *slot = Some(ItemStack {
                     item_id: item_stack.item_id,
-                    quantity: to_add,
+                    quantity: remaining,
                 });
-                remaining -= to_add;
-                if remaining == 0 {
-                    return Ok(());
-                }
+                return Ok(());
             }
         }
         if remaining > 0 {
@@ -47,11 +46,13 @@ impl Inventory {
     }
 }
 
-pub type ItemId = u32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ItemId(pub u32);
 
 #[derive(Debug, Clone)]
 pub struct ItemStack {
     /// `item_id < 256` represents blocks
     pub item_id: ItemId,
+    /// `0 < quantity <= MAX_QUANTITY`
     pub quantity: u32,
 }
