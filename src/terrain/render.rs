@@ -10,7 +10,7 @@ use bevy::{
     prelude::*,
     render::render_resource::AsBindGroup,
     shader::ShaderRef,
-    tasks::{AsyncComputeTaskPool, Task, futures_lite::future},
+    tasks::{AsyncComputeTaskPool, Task},
 };
 use mcubes::MarchingCubes;
 
@@ -426,7 +426,7 @@ fn spawn_generated_terrain_mesh(
     settings: Res<RenderPluginSettings>,
 ) {
     for (entity, mut pending_chunk) in &mut pending {
-        let Some(result) = bevy::tasks::block_on(future::poll_once(&mut pending_chunk.0)) else {
+        let Some(result) = bevy::tasks::futures::check_ready(&mut pending_chunk.0) else {
             continue;
         };
         commands.entity(entity).despawn();
