@@ -10,9 +10,12 @@ use bevy::{
 use tracing_subscriber::Layer;
 
 use crate::{
-    character::{CharacterController, CharacterPlugin, Player},
+    character::{
+        CharacterController, CharacterPlugin,
+        enemy::EnemyPlugin,
+        player::{Player, PlayerCamera},
+    },
     dev_util::{DevUtilPlugin, log_window::LogWindowLayer},
-    enemy::EnemyPlugin,
     explosion::ExplosionPlugin,
     inventory::{Inventory, ItemId, ItemStack},
     object::ObjectPlugin,
@@ -27,9 +30,7 @@ use crate::{
 };
 
 mod character;
-// mod flycam;
 mod dev_util;
-mod enemy;
 mod explosion;
 mod inventory;
 mod object;
@@ -120,9 +121,6 @@ fn spawn_chunk(mut commands: Commands, mut updated: MessageWriter<ChunkUpdated>)
 
     updated.write_batch(ids.into_iter().map(ChunkUpdated));
 }
-
-#[derive(Component)]
-pub struct PlayerCamera;
 
 fn spawn_player(
     mut commands: Commands,

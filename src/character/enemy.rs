@@ -2,7 +2,7 @@ use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind::FUCHSIA_400, prelude::*};
 
 use crate::{
-    character::{CharacterController, Player},
+    character::{CharacterController, player::Player},
     pause::PausableSystems,
     physics::GameLayer,
 };

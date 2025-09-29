@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::{PlayerCamera, terrain::chunk::WriteBlocks};
+use crate::terrain::chunk::WriteBlocks;
 
 pub struct ExplosionPlugin;
 
@@ -148,7 +148,7 @@ fn update_effects(
 }
 
 fn face_camera_billboards(
-    camera: Query<&GlobalTransform, With<PlayerCamera>>,
+    camera: Query<&GlobalTransform, With<crate::character::player::PlayerCamera>>,
     mut query: Query<&mut Transform, With<ExplosionBillboard>>,
 ) -> Result<()> {
     let camera_transform = camera.single()?;

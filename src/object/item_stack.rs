@@ -2,7 +2,7 @@ use avian3d::prelude::*;
 use bevy::{ecs::relationship::RelatedSpawner, platform::collections::HashMap, prelude::*};
 
 use crate::{
-    character::Player,
+    character::player::Player,
     inventory::{Inventory, ItemId, ItemStack},
     physics::GameLayer,
 };
