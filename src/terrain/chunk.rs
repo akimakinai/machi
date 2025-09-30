@@ -184,11 +184,11 @@ impl<'w, 's> ReadBlocks<'w, 's> {
     }
 
     fn get_block(&self, position: IVec3) -> Result<(BlockId, Entity)> {
-        get_block(&self.chunks, &self.chunk_map, position)
+        get_block_common(&self.chunks, &self.chunk_map, position)
     }
 }
 
-fn get_block(
+fn get_block_common(
     chunks: &Query<Read<Chunk>>,
     chunk_map: &Res<ChunkMap>,
     position: IVec3,
@@ -225,15 +225,11 @@ pub struct WriteBlocks<'w, 's> {
 
 impl<'w, 's> WriteBlocks<'w, 's> {
     pub fn get_block(&self, position: IVec3) -> Result<(BlockId, Entity)> {
-        get_block(&self.chunks.as_readonly(), &self.chunk_map, position)
+        get_block_common(&self.chunks.as_readonly(), &self.chunk_map, position)
     }
 
     pub fn set_block(&mut self, position: IVec3, block: BlockId) -> Result<()> {
-        let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
-        let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
-        let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
-        let local_y = position.y;
-        let local_z = position.z.rem_euclid(CHUNK_SIZE as i32);
+        let (chunk_x, chunk_z, local_x, local_y, local_z) = get_chunk_and_local_coords(position);
 
         if local_y < 0 {
             return Ok(());
@@ -253,31 +249,29 @@ impl<'w, 's> WriteBlocks<'w, 's> {
         Ok(())
     }
 
-    pub fn damage_block(&mut self, position: IVec3, damage: f32) -> Result<()> {
+    /// Returns `Ok(Some(block))` if the block was destroyed. `Ok(None)` if it was damaged but not destroyed.
+    pub fn damage_block(&mut self, position: IVec3, damage: f32) -> Result<Option<BlockId>> {
         if damage <= 0.0 {
-            return Ok(());
+            return Ok(None);
         }
 
-        let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
-        let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
-        let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
-        let local_y = position.y;
-        let local_z = position.z.rem_euclid(CHUNK_SIZE as i32);
+        let (chunk_x, chunk_z, local_x, local_y, local_z) = get_chunk_and_local_coords(position);
 
         if local_y < 0 || local_y >= CHUNK_HEIGHT as i32 {
-            return Ok(());
+            return Ok(None);
         }
 
         let chunk_id = *self
             .chunk_map
             .0
             .get(&IVec2::new(chunk_x, chunk_z))
-            .ok_or(BevyError::from("Chunk not found"))?;
+            .ok_or("Chunk not found")?;
 
         let mut chunk = self.chunks.get_mut(chunk_id)?;
         let local = IVec3::new(local_x, local_y, local_z);
-        if chunk.get_block(local) == BlockId::AIR {
-            return Ok(());
+        let block = chunk.get_block(local);
+        if block == BlockId::AIR {
+            return Ok(None);
         }
 
         let durability =
@@ -286,11 +280,11 @@ impl<'w, 's> WriteBlocks<'w, 's> {
 
         if *durability <= 0.0 {
             self.set_block(position, BlockId::AIR)?;
+            Ok(Some(block))
         } else {
             self.trigger_update(chunk_x, chunk_z, IVec3::new(local_x, local_y, local_z));
+            Ok(None)
         }
-
-        Ok(())
     }
 
     fn trigger_update(&mut self, chunk_x: i32, chunk_z: i32, local_pos: IVec3) {
@@ -341,6 +335,15 @@ impl<'w, 's> WriteBlocks<'w, 's> {
             self.writer.write(ChunkUpdated(neighbor_id));
         }
     }
+}
+
+fn get_chunk_and_local_coords(position: IVec3) -> (i32, i32, i32, i32, i32) {
+    let chunk_x = position.x.div_euclid(CHUNK_SIZE as i32);
+    let chunk_z = position.z.div_euclid(CHUNK_SIZE as i32);
+    let local_x = position.x.rem_euclid(CHUNK_SIZE as i32);
+    let local_y = position.y;
+    let local_z = position.z.rem_euclid(CHUNK_SIZE as i32);
+    (chunk_x, chunk_z, local_x, local_y, local_z)
 }
 
 #[derive(Message)]

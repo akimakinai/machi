@@ -210,7 +210,7 @@ fn update_inventory_slots(
 
             let num = inventory.slots[slot.0]
                 .as_ref()
-                .map(|s| s.quantity.to_string())
+                .map(|s| s.quantity().to_string())
                 .unwrap_or_default();
 
             for schild in children.get(child)?.iter() {

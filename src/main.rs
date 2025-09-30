@@ -150,16 +150,8 @@ fn spawn_player(
         .with_children(|c| {
             c.spawn((Camera3d::default(), Hdr, Bloom::default(), PlayerCamera));
             let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
-            slots[0] = ItemStack {
-                item_id: ItemId(1),
-                quantity: 64,
-            }
-            .into();
-            slots[1] = ItemStack {
-                item_id: ItemId(2),
-                quantity: 32,
-            }
-            .into();
+            slots[0] = ItemStack::new(ItemId(1), 64).unwrap().into();
+            slots[1] = ItemStack::new(ItemId(2), 32).unwrap().into();
             inventory_id = c
                 .spawn((Name::new("Player Inventory Data"), Inventory { slots }))
                 .id()

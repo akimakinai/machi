@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 
-const MAX_QUANTITY: u32 = 64;
-
 #[derive(Component, Debug, Clone)]
 pub struct Inventory {
     pub slots: Vec<Option<ItemStack>>,
@@ -15,7 +13,7 @@ impl Inventory {
             if let Some(existing_stack) = slot
                 && existing_stack.item_id == item_stack.item_id
             {
-                let can_add = MAX_QUANTITY - existing_stack.quantity;
+                let can_add = ItemStack::MAX_QUANTITY - existing_stack.quantity;
                 let to_add = remaining.min(can_add);
                 existing_stack.quantity += to_add;
                 remaining -= to_add;
@@ -54,5 +52,20 @@ pub struct ItemStack {
     /// `item_id < 256` represents blocks
     pub item_id: ItemId,
     /// `0 < quantity <= MAX_QUANTITY`
-    pub quantity: u32,
+    quantity: u32,
+}
+
+impl ItemStack {
+    pub const MAX_QUANTITY: u32 = 64;
+
+    pub fn new(item_id: ItemId, quantity: u32) -> Result<Self> {
+        if quantity == 0 || quantity > Self::MAX_QUANTITY {
+            return Err("ItemStack quantity must be between 1 and MAX_QUANTITY".into());
+        }
+        Ok(Self { item_id, quantity })
+    }
+
+    pub fn quantity(&self) -> u32 {
+        self.quantity
+    }
 }

@@ -1,5 +1,9 @@
 use avian3d::prelude::*;
-use bevy::{ecs::relationship::RelatedSpawner, platform::collections::HashMap, prelude::*};
+use bevy::{
+    ecs::{entity::EntityHashSet, error::HandleError as _, relationship::RelatedSpawner},
+    platform::collections::HashMap,
+    prelude::*,
+};
 
 use crate::{
     character::player::Player,
@@ -25,18 +29,18 @@ pub struct ItemStackObj {
 #[derive(Component)]
 struct ItemSensor;
 
-pub fn create_item_stack_obj(
+pub fn item_stack_bundle(
     item_stack: ItemStack,
     item_stack_obj_assets: &ItemStackObjAssets,
     overrides: impl Bundle,
 ) -> Result<impl Bundle> {
     let item_id = item_stack.item_id;
 
-    if item_stack.quantity == 0 {
+    if item_stack.quantity() == 0 {
         return Err("Cannot create ItemStackObj with quantity 0".into());
     }
 
-    let num_cubes = (item_stack.quantity as f32).log2().ceil() as u32 + 1;
+    let num_cubes = (item_stack.quantity() as f32).log2().ceil() as u32 + 1;
 
     let cloned_mesh = item_stack_obj_assets.mesh.clone();
     let cloned_material = item_stack_obj_assets
@@ -88,6 +92,16 @@ pub fn create_item_stack_obj(
     ))
 }
 
+pub fn spawn_item_stack(item_stack: ItemStack, overrides: impl Bundle) -> impl Command {
+    (move |world: &mut World| -> Result<()> {
+        let assets = world.resource::<ItemStackObjAssets>();
+        let b = item_stack_bundle(item_stack, assets, overrides)?;
+        world.spawn(b);
+        Ok(())
+    })
+    .handle_error()
+}
+
 #[derive(Resource)]
 pub struct ItemStackObjAssets {
     // TODO: mesh should also be a HashMap
@@ -129,12 +143,12 @@ fn merge_items(
     item_assets: Res<ItemStackObjAssets>,
     transforms: Query<&Transform>,
 ) -> Result<()> {
-    let mut merged = HashMap::new();
+    let mut merged = EntityHashSet::default();
 
     for collision in collision_started.read() {
         let &CollisionStarted(entity1, entity2) = collision;
         // TODO: handle multiple merges
-        if merged.contains_key(&entity1) || merged.contains_key(&entity2) {
+        if merged.contains(&entity1) || merged.contains(&entity2) {
             continue;
         }
         let Ok([parent1, parent2]) = merge_sensors
@@ -150,6 +164,9 @@ fn merge_items(
             continue;
         }
 
+        merged.insert(entity1);
+        merged.insert(entity2);
+
         let mid_translation = transforms
             .get_many([parent1, parent2])?
             .map(|t| t.translation)
@@ -157,19 +174,24 @@ fn merge_items(
             .sum::<Vec3>()
             / 2.0;
 
-        let total_quantity = stack1.1.item_stack.quantity + stack2.1.item_stack.quantity;
-        let merged_item_stack = ItemStack {
-            item_id: stack1.1.item_stack.item_id,
-            quantity: total_quantity,
-        };
-        merged.insert(stack1.0, (merged_item_stack, mid_translation));
+        let total_quantity = stack1.1.item_stack.quantity() + stack2.1.item_stack.quantity();
+        if total_quantity > ItemStack::MAX_QUANTITY {
+            commands.entity(stack1.0).insert(ItemStackObj {
+                item_stack: ItemStack::new(stack1.1.item_stack.item_id, ItemStack::MAX_QUANTITY)?,
+            });
+            commands.entity(stack2.0).insert(ItemStackObj {
+                item_stack: ItemStack::new(
+                    stack2.1.item_stack.item_id,
+                    total_quantity - ItemStack::MAX_QUANTITY,
+                )?,
+            });
+            continue;
+        }
+        let merged_item_stack = ItemStack::new(stack1.1.item_stack.item_id, total_quantity)?;
         commands.entity(stack1.0).despawn();
         commands.entity(stack2.0).despawn();
-    }
 
-    for (_, (merged_item_stack, mid_translation)) in merged {
-        debug!(message = "Merged", item_stack = ?merged_item_stack);
-        commands.spawn(create_item_stack_obj(
+        commands.spawn(item_stack_bundle(
             merged_item_stack,
             &item_assets,
             Transform::from_translation(mid_translation),
@@ -212,11 +234,11 @@ fn pickup_items(
         let mut inventory = inventories.get_mut(inventory)?;
 
         if let Err(remaining) = inventory.add_item_stack(item_obj.item_stack.clone()) {
-            if remaining.quantity == item_obj.item_stack.quantity {
+            if remaining.quantity() == item_obj.item_stack.quantity() {
                 continue;
             }
 
-            commands.spawn(create_item_stack_obj(
+            commands.spawn(item_stack_bundle(
                 remaining,
                 &item_assets,
                 Transform::from_translation(item_transform.translation),

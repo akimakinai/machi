@@ -3,7 +3,7 @@ use bevy::{prelude::*, window::PrimaryWindow};
 
 use crate::{
     inventory::ItemStack,
-    object::item_stack::{ItemStackObjAssets, create_item_stack_obj},
+    object::item_stack::{ItemStackObjAssets, item_stack_bundle},
     pause::Pause,
     terrain::chunk::BlockId,
 };
@@ -54,11 +54,8 @@ fn on_click(
                 rand::random::<f32>() * 2.0,
                 (rand::random::<f32>() - 0.5) * 2.0,
             ));
-            commands.spawn(create_item_stack_obj(
-                ItemStack {
-                    item_id: block_id.as_item_id(),
-                    quantity: 1,
-                },
+            commands.spawn(item_stack_bundle(
+                ItemStack::new(block_id.as_item_id(), 1)?,
                 &item_assets,
                 (
                     Transform::from_translation(block_pos.0.as_vec3() + Vec3::splat(0.5)),
