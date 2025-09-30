@@ -2,7 +2,7 @@ use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind::FUCHSIA_400, prelude::*};
 
 use crate::{
-    character::{CharacterController, player::Player},
+    character::{CharacterController, MovementEvent, MovementEventKind, player::Player},
     pause::PausableSystems,
     physics::GameLayer,
 };
@@ -37,25 +37,45 @@ fn spawn_enemy(
         Friction::new(0.5),
         collider,
         RigidBody::Dynamic,
-        CharacterController::default(),
+        CharacterController {
+            movement_acceleration: 50.0,
+            ..default()
+        },
         Transform::from_translation(Vec3::new(15.0, 20.0, 5.0)),
         CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain]),
     ));
 }
 
 fn enemy_behavior(
+    mut commands: Commands,
     mut transforms: ParamSet<(
-        Query<&mut Transform, With<Enemy>>,
+        Query<(Entity, &mut Transform), With<Enemy>>,
         Query<&Transform, With<Player>>,
     )>,
-    time: Res<Time>,
 ) {
-    let Ok(player_transform) = transforms.p1().single().cloned() else {
+    let Some(player_translation) = transforms
+        .p1()
+        .iter()
+        .next()
+        .map(|transform| transform.translation)
+    else {
         return;
     };
 
-    for mut enemy_transform in &mut transforms.p0() {
-        let direction = (player_transform.translation - enemy_transform.translation).normalize();
-        enemy_transform.translation += direction * 2.0 * time.delta_secs();
+    for (entity, mut enemy_transform) in transforms.p0().iter_mut() {
+        let to_player = player_translation - enemy_transform.translation;
+        let mut planar = Vec3::new(to_player.x, 0.0, to_player.z);
+
+        if planar.length_squared() <= f32::EPSILON {
+            continue;
+        }
+
+        planar = planar.normalize();
+        enemy_transform.rotation = Quat::from_rotation_arc(-Vec3::Z, planar);
+
+        commands.trigger(MovementEvent {
+            entity,
+            kind: MovementEventKind::Move(Vec2::Y),
+        });
     }
 }
