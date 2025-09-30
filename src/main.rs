@@ -62,7 +62,7 @@ fn main() {
         .add_plugins(DevUtilPlugin)
         .configure_sets(
             FixedPostUpdate,
-            PhysicsSet::StepSimulation.run_if(in_state(Pause(false))),
+            PhysicsSystems::StepSimulation.run_if(in_state(Pause(false))),
         )
         .add_systems(Startup, startup)
         .add_systems(Startup, (spawn_chunk, spawn_player))

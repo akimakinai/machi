@@ -137,7 +137,7 @@ impl FromWorld for ItemStackObjAssets {
 
 fn merge_items(
     mut commands: Commands,
-    mut collision_started: MessageReader<CollisionStarted>,
+    mut collision_started: MessageReader<CollisionStart>,
     merge_sensors: Query<&ChildOf, With<ItemSensor>>,
     item_stack_objs: Query<(Entity, &ItemStackObj)>,
     item_assets: Res<ItemStackObjAssets>,
@@ -146,13 +146,17 @@ fn merge_items(
     let mut merged = EntityHashSet::default();
 
     for collision in collision_started.read() {
-        let &CollisionStarted(entity1, entity2) = collision;
+        let &CollisionStart {
+            collider1,
+            collider2,
+            ..
+        } = collision;
         // TODO: handle multiple merges
-        if merged.contains(&entity1) || merged.contains(&entity2) {
+        if merged.contains(&collider1) || merged.contains(&collider2) {
             continue;
         }
         let Ok([parent1, parent2]) = merge_sensors
-            .get_many([entity1, entity2])
+            .get_many([collider1, collider2])
             .map(|cs| cs.map(|c| c.parent()))
         else {
             continue;
@@ -164,8 +168,8 @@ fn merge_items(
             continue;
         }
 
-        merged.insert(entity1);
-        merged.insert(entity2);
+        merged.insert(collider1);
+        merged.insert(collider2);
 
         let mid_translation = transforms
             .get_many([parent1, parent2])?
@@ -206,19 +210,23 @@ fn pickup_items(
     mut inventories: Query<&mut Inventory>,
     item_objs: Query<(&ItemStackObj, &Transform)>,
     item_sensors: Query<&ChildOf, With<ItemSensor>>,
-    mut collision_started: MessageReader<CollisionStarted>,
+    mut collision_started: MessageReader<CollisionStart>,
     item_assets: Res<ItemStackObjAssets>,
     mut commands: Commands,
 ) -> Result<()> {
     for collision in collision_started.read() {
-        let &CollisionStarted(entity1, entity2) = collision;
+        let &CollisionStart {
+            collider1,
+            collider2,
+            ..
+        } = collision;
 
-        let (player_children, item_id) = if let Ok(player_children) = players.get(entity1)
-            && let Ok(item_sensor_parent) = item_sensors.get(entity2)
+        let (player_children, item_id) = if let Ok(player_children) = players.get(collider1)
+            && let Ok(item_sensor_parent) = item_sensors.get(collider2)
         {
             (player_children, item_sensor_parent.parent())
-        } else if let Ok(player_children) = players.get(entity2)
-            && let Ok(item_sensor_parent) = item_sensors.get(entity1)
+        } else if let Ok(player_children) = players.get(collider2)
+            && let Ok(item_sensor_parent) = item_sensors.get(collider1)
         {
             (player_children, item_sensor_parent.parent())
         } else {
