@@ -1,4 +1,6 @@
 //! Terrain chunks. A chunk is `CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE` blocks in size.
+use std::sync::Arc;
+
 use bevy::{
     ecs::system::{
         SystemParam,
@@ -58,19 +60,20 @@ impl BlockId {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub struct Chunk {
     pub position: IVec2,
-    pub blocks: Box<[[[BlockId; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]>,
-    pub durability: Box<[[[f32; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]>,
+    // Chunk mesh generation runs in compute pool, referencing possibly old chunk data.
+    pub blocks: Arc<[[[BlockId; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]>,
+    pub durability: Arc<[[[f32; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]>,
 }
 
 impl Chunk {
     pub fn new(position: IVec2) -> Self {
         Self {
             position,
-            blocks: Box::new([[[BlockId(0); CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]),
-            durability: Box::new([[[1.0; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]),
+            blocks: Arc::new([[[BlockId(0); CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]),
+            durability: Arc::new([[[1.0; CHUNK_SIZE]; CHUNK_HEIGHT]; CHUNK_SIZE]),
         }
     }
 
@@ -79,10 +82,11 @@ impl Chunk {
     }
 
     pub fn set_block(&mut self, position: IVec3, block: BlockId) {
-        self.blocks[position.x as usize][position.y as usize][position.z as usize] = block;
+        Arc::make_mut(&mut self.blocks)[position.x as usize][position.y as usize]
+            [position.z as usize] = block;
         let default_durability = if block == BlockId::AIR { 0.0 } else { 1.0 };
-        self.durability[position.x as usize][position.y as usize][position.z as usize] =
-            default_durability;
+        Arc::make_mut(&mut self.durability)[position.x as usize][position.y as usize]
+            [position.z as usize] = default_durability;
     }
 
     pub fn get_durability(&self, position: IVec3) -> f32 {
@@ -274,8 +278,8 @@ impl<'w, 's> WriteBlocks<'w, 's> {
             return Ok(None);
         }
 
-        let durability =
-            &mut chunk.durability[local.x as usize][local.y as usize][local.z as usize];
+        let durability = &mut Arc::make_mut(&mut chunk.durability)[local.x as usize]
+            [local.y as usize][local.z as usize];
         *durability -= damage;
 
         if *durability <= 0.0 {

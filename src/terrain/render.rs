@@ -173,114 +173,115 @@ fn generate_terrain_mesh(
 
         let chunk = chunks.get(chunk_id)?;
 
-        let span = debug_span!("Update terrain", chunk_pos = ?chunk.position).entered();
-
         let mut neighbor_chunks = vec![];
         for dz in -1..=1 {
             for dx in -1..=1 {
                 if dx == 0 && dz == 0 {
-                    neighbor_chunks.push(Some(chunk));
+                    neighbor_chunks.push(Some(chunk.clone()));
                     continue;
                 }
                 let neighbor_pos = chunk.position + IVec2::new(dx, dz);
                 if let Some(&neighbor_entity) = chunk_map.0.get(&neighbor_pos)
                     && let Ok(neighbor_chunk) = chunks.get(neighbor_entity)
                 {
-                    neighbor_chunks.push(Some(neighbor_chunk));
+                    neighbor_chunks.push(Some(neighbor_chunk.clone()));
                     continue;
                 }
                 neighbor_chunks.push(None);
             }
         }
 
-        let dxdz_to_idx = |dx: i32, dz: i32| -> usize { ((dz + 1) * 3 + (dx + 1)) as usize };
-
-        let cap = (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_SIZE + 2);
-
-        // Values for marching cubes
-        let mut values = Vec::with_capacity(cap);
-        // Block ID and durability for each voxel
-        let mut block_ids = Vec::with_capacity(cap);
-        let mut durability_vals = Vec::with_capacity(cap);
-
-        for z in -1..(CHUNK_SIZE as i32 + 1) {
-            for y in -1..(CHUNK_HEIGHT as i32 + 1) {
-                for x in -1..(CHUNK_SIZE as i32 + 1) {
-                    let mut dxdz = IVec2::ZERO;
-                    if x < 0 {
-                        dxdz.x = -1;
-                    } else if x >= CHUNK_SIZE as i32 {
-                        dxdz.x = 1;
-                    }
-                    if z < 0 {
-                        dxdz.y = -1;
-                    } else if z >= CHUNK_SIZE as i32 {
-                        dxdz.y = 1;
-                    }
-
-                    let (block_id, durability) = if y < 0 || y >= CHUNK_HEIGHT as i32 {
-                        (BlockId::AIR, 1.0)
-                    } else {
-                        let neighbor_idx = dxdz_to_idx(dxdz.x, dxdz.y);
-                        if let Some(neighbor_chunk) = neighbor_chunks[neighbor_idx] {
-                            let nx = x - dxdz.x * CHUNK_SIZE as i32;
-                            let nz = z - dxdz.y * CHUNK_SIZE as i32;
-                            (
-                                neighbor_chunk.get_block(IVec3::new(nx, y, nz)),
-                                neighbor_chunk.get_durability(IVec3::new(nx, y, nz)),
-                            )
-                        } else {
-                            (BlockId::AIR, 1.0)
-                        }
-                    };
-
-                    values.push(if block_id.is_terrain() { 1.0 } else { 0.0 });
-                    block_ids.push(block_id);
-
-                    durability_vals.push(durability);
-                }
-            }
-        }
-
-        fn index(x: i32, y: i32, z: i32) -> usize {
-            (x + 1) as usize
-                + (y + 1) as usize * (CHUNK_SIZE + 2)
-                + (z + 1) as usize * (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2)
-        }
-
-        for z in -1..(CHUNK_SIZE as i32 + 1) {
-            for y in -1..(CHUNK_HEIGHT as i32 + 1) {
-                for x in -1..(CHUNK_SIZE as i32 + 1) {
-                    let idx = index(x, y, z);
-                    if values[idx] == 0.0 && block_ids[idx].is_solid() {
-                        // check neighbors
-                        let mut terrain_neighbor = None;
-                        'check: for dz in -1..=1 {
-                            for dy in -1..=1 {
-                                for dx in -1..=1 {
-                                    if dx == 0 && dy == 0 && dz == 0 {
-                                        continue;
-                                    }
-                                    let nidx = index(x + dx, y + dy, z + dz);
-                                    if values[nidx] > 0.0 {
-                                        terrain_neighbor = Some(block_ids[nidx]);
-                                        break 'check;
-                                    }
-                                }
-                            }
-                        }
-
-                        if let Some(terrain_block) = terrain_neighbor {
-                            values[idx] = 0.5;
-                            block_ids[idx] = terrain_block;
-                        }
-                    }
-                }
-            }
-        }
+        let chunk_position = chunk.position;
 
         let settings = settings.clone();
         let task = task_pool.spawn(async move {
+            let _span = debug_span!("Update terrain", chunk_pos = ?chunk_position).entered();
+
+            let cap = (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_SIZE + 2);
+
+            // Values for marching cubes
+            let mut values = Vec::with_capacity(cap);
+            // Block ID and durability for each voxel
+            let mut block_ids = Vec::with_capacity(cap);
+            let mut durability_vals = Vec::with_capacity(cap);
+
+            let dxdz_to_idx = |dx: i32, dz: i32| -> usize { ((dz + 1) * 3 + (dx + 1)) as usize };
+            for z in -1..(CHUNK_SIZE as i32 + 1) {
+                for y in -1..(CHUNK_HEIGHT as i32 + 1) {
+                    for x in -1..(CHUNK_SIZE as i32 + 1) {
+                        let mut dxdz = IVec2::ZERO;
+                        if x < 0 {
+                            dxdz.x = -1;
+                        } else if x >= CHUNK_SIZE as i32 {
+                            dxdz.x = 1;
+                        }
+                        if z < 0 {
+                            dxdz.y = -1;
+                        } else if z >= CHUNK_SIZE as i32 {
+                            dxdz.y = 1;
+                        }
+
+                        let (block_id, durability) = if y < 0 || y >= CHUNK_HEIGHT as i32 {
+                            (BlockId::AIR, 1.0)
+                        } else {
+                            let neighbor_idx = dxdz_to_idx(dxdz.x, dxdz.y);
+                            if let Some(neighbor_chunk) = &neighbor_chunks[neighbor_idx] {
+                                let nx = x - dxdz.x * CHUNK_SIZE as i32;
+                                let nz = z - dxdz.y * CHUNK_SIZE as i32;
+                                (
+                                    neighbor_chunk.get_block(IVec3::new(nx, y, nz)),
+                                    neighbor_chunk.get_durability(IVec3::new(nx, y, nz)),
+                                )
+                            } else {
+                                (BlockId::AIR, 1.0)
+                            }
+                        };
+
+                        values.push(if block_id.is_terrain() { 1.0 } else { 0.0 });
+                        block_ids.push(block_id);
+
+                        durability_vals.push(durability);
+                    }
+                }
+            }
+
+            fn index(x: i32, y: i32, z: i32) -> usize {
+                (x + 1) as usize
+                    + (y + 1) as usize * (CHUNK_SIZE + 2)
+                    + (z + 1) as usize * (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2)
+            }
+
+            for z in -1..(CHUNK_SIZE as i32 + 1) {
+                for y in -1..(CHUNK_HEIGHT as i32 + 1) {
+                    for x in -1..(CHUNK_SIZE as i32 + 1) {
+                        let idx = index(x, y, z);
+                        if values[idx] == 0.0 && block_ids[idx].is_solid() {
+                            // check neighbors
+                            let mut terrain_neighbor = None;
+                            'check: for dz in -1..=1 {
+                                for dy in -1..=1 {
+                                    for dx in -1..=1 {
+                                        if dx == 0 && dy == 0 && dz == 0 {
+                                            continue;
+                                        }
+                                        let nidx = index(x + dx, y + dy, z + dz);
+                                        if values[nidx] > 0.0 {
+                                            terrain_neighbor = Some(block_ids[nidx]);
+                                            break 'check;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if let Some(terrain_block) = terrain_neighbor {
+                                values[idx] = 0.5;
+                                block_ids[idx] = terrain_block;
+                            }
+                        }
+                    }
+                }
+            }
+
             let mc_span = debug_span!("Marching Cubes").entered();
             let mcmesh = MarchingCubes::new(
                 (CHUNK_SIZE + 2, CHUNK_HEIGHT + 2, CHUNK_SIZE + 2),
@@ -327,8 +328,6 @@ fn generate_terrain_mesh(
             // Deduplicate vertices to get smooth normals
             deduplicate_vertices(&mut bvmesh);
             bvmesh.compute_normals();
-
-            bv_span.exit();
 
             let bv_normal = bvmesh
                 .attribute(Mesh::ATTRIBUTE_NORMAL)
@@ -392,6 +391,8 @@ fn generate_terrain_mesh(
             bvmesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
             bvmesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, uv1);
 
+            bv_span.exit();
+
             PendingChunkResult {
                 mesh: bvmesh,
                 chunk_id,
@@ -400,8 +401,6 @@ fn generate_terrain_mesh(
         });
 
         commands.spawn(PendingChunk(task));
-
-        span.exit();
     }
 
     Ok(())
