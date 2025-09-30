@@ -195,10 +195,13 @@ fn generate_terrain_mesh(
 
         let dxdz_to_idx = |dx: i32, dz: i32| -> usize { ((dz + 1) * 3 + (dx + 1)) as usize };
 
-        let mut values = vec![];
+        let cap = (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_SIZE + 2);
 
-        let mut block_ids = vec![];
-        let mut durability_vals = vec![];
+        // Values for marching cubes
+        let mut values = Vec::with_capacity(cap);
+        // Block ID and durability for each voxel
+        let mut block_ids = Vec::with_capacity(cap);
+        let mut durability_vals = Vec::with_capacity(cap);
 
         for z in -1..(CHUNK_SIZE as i32 + 1) {
             for y in -1..(CHUNK_HEIGHT as i32 + 1) {
@@ -235,6 +238,43 @@ fn generate_terrain_mesh(
                     block_ids.push(block_id);
 
                     durability_vals.push(durability);
+                }
+            }
+        }
+
+        fn index(x: i32, y: i32, z: i32) -> usize {
+            (x + 1) as usize
+                + (y + 1) as usize * (CHUNK_SIZE + 2)
+                + (z + 1) as usize * (CHUNK_SIZE + 2) * (CHUNK_HEIGHT + 2)
+        }
+
+        for z in -1..(CHUNK_SIZE as i32 + 1) {
+            for y in -1..(CHUNK_HEIGHT as i32 + 1) {
+                for x in -1..(CHUNK_SIZE as i32 + 1) {
+                    let idx = index(x, y, z);
+                    if values[idx] == 0.0 && block_ids[idx].is_solid() {
+                        // check neighbors
+                        let mut terrain_neighbor = None;
+                        'check: for dz in -1..=1 {
+                            for dy in -1..=1 {
+                                for dx in -1..=1 {
+                                    if dx == 0 && dy == 0 && dz == 0 {
+                                        continue;
+                                    }
+                                    let nidx = index(x + dx, y + dy, z + dz);
+                                    if values[nidx] > 0.0 {
+                                        terrain_neighbor = Some(block_ids[nidx]);
+                                        break 'check;
+                                    }
+                                }
+                            }
+                        }
+
+                        if let Some(terrain_block) = terrain_neighbor {
+                            values[idx] = 0.5;
+                            block_ids[idx] = terrain_block;
+                        }
+                    }
                 }
             }
         }
