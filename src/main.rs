@@ -12,7 +12,6 @@ use tracing_subscriber::Layer;
 use crate::{
     character::{
         CharacterController, CharacterPlugin,
-        enemy::EnemyPlugin,
         player::{Player, PlayerCamera},
     },
     dev_util::{DevUtilPlugin, log_window::LogWindowLayer},
@@ -55,7 +54,6 @@ fn main() {
         .add_plugins(RenderPlugin)
         .add_plugins(EditPlugin)
         .add_plugins(CharacterPlugin)
-        .add_plugins(EnemyPlugin)
         .add_plugins(ObjectPlugin)
         .add_plugins(ExplosionPlugin)
         .add_plugins(UiPlugin)

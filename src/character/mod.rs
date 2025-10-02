@@ -6,6 +6,7 @@ use std::f32::consts::PI;
 
 use crate::pause::PausableSystems;
 
+mod ai;
 pub mod enemy;
 pub mod player;
 
@@ -16,6 +17,8 @@ pub struct CharacterPlugin;
 impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(player::PlayerPlugin)
+            .add_plugins(enemy::EnemyPlugin)
+            .add_plugins(ai::AiPlugin)
             .add_observer(add_ground_shape_caster)
             .add_observer(movement)
             .add_systems(
