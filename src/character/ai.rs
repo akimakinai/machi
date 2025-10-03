@@ -1,12 +1,4 @@
-use std::marker::PhantomData;
-
-use bevy::{
-    ecs::{
-        component::Mutable,
-        system::{StaticSystemParam, SystemParam},
-    },
-    prelude::*,
-};
+use bevy::prelude::*;
 
 use crate::pause::PausableSystems;
 
@@ -14,53 +6,54 @@ pub struct AiPlugin;
 
 impl Plugin for AiPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(FixedUpdate, AiActionUpdateSystems.in_set(PausableSystems));
-    }
-}
-
-pub struct AiActionPlugin<T: AiAction>(PhantomData<T>);
-
-impl<T: AiAction> AiActionPlugin<T> {
-    pub fn new() -> Self {
-        Self(PhantomData)
-    }
-}
-
-impl<T: AiAction> Plugin for AiActionPlugin<T> {
-    fn build(&self, app: &mut App) {
-        app.add_systems(
+        app.configure_sets(
             FixedUpdate,
-            ai_action_update::<T>.in_set(AiActionUpdateSystems),
+            (
+                AiActionSystems::PreUpdateAction,
+                AiActionSystems::UpdateAction,
+            )
+                .chain()
+                .in_set(PausableSystems),
+        )
+        .add_systems(
+            FixedUpdate,
+            pre_ai_action_update.in_set(AiActionSystems::PreUpdateAction),
         );
     }
 }
 
+// TODO: Control nodes in behavior tree (like Sequence) assigns `ActiveAiAction`
+// in `PreUpdateAction` phase, action nodes run in `UpdateAction`
+
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
-struct AiActionUpdateSystems;
+pub enum AiActionSystems {
+    PreUpdateAction,
+    UpdateAction,
+}
 
 // TODO: make this relation
 #[derive(Component)]
 pub struct AiOf(pub Entity);
 
-fn ai_action_update<T: AiAction>(
+#[derive(Component)]
+pub struct CurrentAiActionResult(pub Option<AiActionResult>);
+
+fn pre_ai_action_update(
     mut commands: Commands,
-    mut query: Query<(&AiOf, Entity, &mut T), With<ActiveAiAction>>,
-    mut params: StaticSystemParam<T::Param>,
+    mut query: Query<(NameOrEntity, Entity, &mut CurrentAiActionResult), With<ActiveAiAction>>,
 ) {
-    for (&AiOf(entity), node_entity, mut action) in query.iter_mut() {
-        match action.update(entity, node_entity, &mut params) {
-            Ok(AiActionResult::Continue) => {}
-            Ok(AiActionResult::Complete) => {
+    for (name, node_entity, mut result) in &mut query {
+        match result.0.take() {
+            Some(AiActionResult::Continue) => {}
+            Some(AiActionResult::Complete) => {
                 commands.entity(node_entity).remove::<ActiveAiAction>();
             }
-            Err(e) => {
+            None => {
+                error!("Active AI action ({name}) did not set result! Removing active action.");
                 commands.entity(node_entity).remove::<ActiveAiAction>();
-                error!(
-                    "Error updating AI action for entity {:?}: {}",
-                    node_entity, e
-                );
             }
         }
+        // TODO: notify the parent behavior tree node
     }
 }
 
@@ -70,15 +63,4 @@ pub struct ActiveAiAction;
 pub enum AiActionResult {
     Continue,
     Complete,
-}
-
-pub trait AiAction: Component<Mutability = Mutable> + 'static {
-    type Param: SystemParam + 'static;
-
-    fn update(
-        &mut self,
-        entity: Entity,
-        node_entity: Entity,
-        params: &mut StaticSystemParam<Self::Param>,
-    ) -> Result<AiActionResult>;
 }

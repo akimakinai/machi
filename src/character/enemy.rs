@@ -1,17 +1,10 @@
 use avian3d::prelude::*;
-use bevy::{
-    color::palettes::tailwind::FUCHSIA_400,
-    ecs::system::{
-        StaticSystemParam,
-        lifetimeless::{Read, SCommands, SQuery, Write},
-    },
-    prelude::*,
-};
+use bevy::{color::palettes::tailwind::FUCHSIA_400, prelude::*};
 
 use crate::{
     character::{
         CharacterController, MovementEvent, MovementEventKind,
-        ai::{ActiveAiAction, AiAction, AiActionPlugin, AiActionResult, AiOf},
+        ai::{ActiveAiAction, AiActionResult, AiActionSystems, AiOf, CurrentAiActionResult},
         player::Player,
     },
     physics::GameLayer,
@@ -21,8 +14,11 @@ pub struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(AiActionPlugin::<ChasePlayerAction>::new())
-            .add_systems(Startup, spawn_enemy);
+        app.add_systems(
+            Update,
+            chase_action_update.in_set(AiActionSystems::UpdateAction),
+        )
+        .add_systems(Startup, spawn_enemy);
     }
 }
 
@@ -63,43 +59,33 @@ fn spawn_enemy(
 #[derive(Component)]
 struct ChasePlayerAction;
 
-impl AiAction for ChasePlayerAction {
-    type Param = (
-        SCommands,
-        ParamSet<
-            'static,
-            'static,
-            (
-                SQuery<(Entity, Write<Transform>), With<Enemy>>,
-                SQuery<Read<Transform>, With<Player>>,
-            ),
-        >,
-    );
+fn chase_action_update(
+    mut query: Query<(&AiOf, &ChasePlayerAction, &mut CurrentAiActionResult)>,
+    mut transforms: ParamSet<(Query<&Transform, With<Player>>, Query<&mut Transform>)>,
+    mut commands: Commands,
+) -> Result<()> {
+    let Some(player_translation) = transforms
+        .p0()
+        .iter()
+        .next()
+        .map(|transform| transform.translation)
+    else {
+        return Err("No player found".into());
+    };
 
-    fn update(
-        &mut self,
-        entity: Entity,
-        _node_entity: Entity,
-        params: &mut StaticSystemParam<Self::Param>,
-    ) -> Result<AiActionResult> {
-        let (commands, transforms) = &mut **params;
-        let Some(player_translation) = transforms
-            .p1()
-            .iter()
-            .next()
-            .map(|transform| transform.translation)
-        else {
-            return Err("No player found".into());
+    let mut enemy_transforms = transforms.p1();
+
+    for (&AiOf(entity), _action, mut result) in &mut query {
+        let Ok(mut enemy_transform) = enemy_transforms.get_mut(entity) else {
+            continue;
         };
-
-        let mut transforms = transforms.p0();
-        let (entity, mut enemy_transform) = transforms.get_mut(entity)?;
         let to_player = player_translation - enemy_transform.translation;
         let mut planar = Vec3::new(to_player.x, 0.0, to_player.z);
 
         if planar.length_squared() <= 0.5 {
             debug!("Enemy reached player");
-            return Ok(AiActionResult::Complete);
+            result.0 = Some(AiActionResult::Complete);
+            continue;
         }
 
         planar = planar.normalize();
@@ -110,6 +96,8 @@ impl AiAction for ChasePlayerAction {
             kind: MovementEventKind::Move(Vec2::Y),
         });
 
-        Ok(AiActionResult::Continue)
+        result.0 = Some(AiActionResult::Continue);
     }
+
+    Ok(())
 }
