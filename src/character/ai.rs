@@ -26,16 +26,13 @@ impl Plugin for AiPlugin {
         )
         .add_systems(
             FixedUpdate,
-            (update_behavior_trees, reset_results)
+            (update_behavior_trees, reset_leaf_results)
                 .chain()
                 .in_set(AiActionSystems::PreUpdateAction),
         )
-        .add_observer(remove_current_result);
+        .add_observer(on_remove_active_node);
     }
 }
-
-// TODO: Control nodes in behavior tree (like Sequence) assigns `ActiveAiAction`
-// in `PreUpdateAction` phase, action nodes run in `UpdateAction`
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AiActionSystems {
@@ -47,14 +44,17 @@ pub enum AiActionSystems {
 #[derive(Component)]
 pub struct AiOf(pub Entity);
 
+/// Active leaf nodes should set this to indicate their result to their parent.
 #[derive(Component, Default, Clone, Copy)]
-pub struct CurrentAiActionResult(pub Option<AiActionResult>);
+pub struct LeafNodeResult(pub Option<NodeResult>);
 
+/// Marker component for currently active nodes.
+/// If a leaf node is active, all its parents are also active.
 #[derive(Component)]
-pub struct ActiveAiAction;
+pub struct ActiveNode;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum AiActionResult {
+pub enum NodeResult {
     Continue,
     Complete,
     QueueNode(Entity),
@@ -68,14 +68,14 @@ pub struct ControlNodeSystem(Option<ControlNodeSystemInner>);
 
 #[derive(Component)]
 pub enum ControlNodeSystemInner {
-    Uncached(Option<BoxedSystem<In<Entity>, Result<AiActionResult>>>),
-    Cached(SystemId<In<Entity>, Result<AiActionResult>>),
+    Uncached(Option<BoxedSystem<In<Entity>, Result<NodeResult>>>),
+    Cached(SystemId<In<Entity>, Result<NodeResult>>),
 }
 
 impl ControlNodeSystem {
     pub fn new<F, M>(system: F) -> Self
     where
-        F: IntoSystem<In<Entity>, Result<AiActionResult>, M> + 'static,
+        F: IntoSystem<In<Entity>, Result<NodeResult>, M> + 'static,
     {
         ControlNodeSystem(Some(ControlNodeSystemInner::Uncached(Some(Box::new(
             F::into_system(system),
@@ -84,7 +84,7 @@ impl ControlNodeSystem {
 }
 
 impl ControlNodeSystemInner {
-    pub fn run(&mut self, world: &mut World, entity: Entity) -> Result<AiActionResult> {
+    pub fn run(&mut self, world: &mut World, entity: Entity) -> Result<NodeResult> {
         if let ControlNodeSystemInner::Uncached(system) = self {
             *self = ControlNodeSystemInner::Cached(
                 world.register_boxed_system(system.take().expect("this can never be None")),
@@ -111,19 +111,19 @@ fn update_behavior_trees(
                 Option<&Children>,
                 Has<BehaviorTreeRoot>,
             ),
-            With<ActiveAiAction>,
+            With<ActiveNode>,
         >,
-        Query<(), With<ActiveAiAction>>,
+        Query<(), With<ActiveNode>>,
     )>,
 ) -> Result<()> {
     let (mut active_nodes, is_active) = queries.get(world);
 
-    let mut node_parent = HashMap::new();
+    let mut node_parents = HashMap::new();
     let mut leaf_nodes = EntityHashSet::new();
 
     for (id, child_of, children, is_root) in &mut active_nodes {
         if !is_root && let Some(&ChildOf(parent)) = child_of {
-            node_parent.insert(id, parent);
+            node_parents.insert(id, parent);
         }
 
         // Nodes without active children are considered leaf nodes
@@ -153,15 +153,15 @@ fn update_behavior_trees(
                 .expect("Control node system removed itself")
                 .0 = Some(system);
             match action_result {
-                AiActionResult::QueueNode(new_node) => {
+                NodeResult::QueueNode(new_node) => {
                     if world.get::<ControlNodeSystem>(new_node).is_some() {
                         leaf_nodes.push(new_node);
-                        node_parent.insert(new_node, node);
+                        node_parents.insert(new_node, node);
                         debug!("Queued {new_node}");
                     }
                 }
-                AiActionResult::Complete => {
-                    if let Some(&parent) = node_parent.get(&node) {
+                NodeResult::Complete => {
+                    if let Some(&parent) = node_parents.get(&node) {
                         debug!("Node {node} completed, activating parent {parent}");
                         leaf_nodes.push(parent);
                     } else {
@@ -172,7 +172,7 @@ fn update_behavior_trees(
             }
         } else {
             // leaf node is active
-            if let Some(&parent) = node_parent.get(&node) {
+            if let Some(&parent) = node_parents.get(&node) {
                 leaf_nodes.push(parent);
             } else {
                 error!(
@@ -186,13 +186,13 @@ fn update_behavior_trees(
     Ok(())
 }
 
-fn reset_results(
-    mut query: Query<&mut CurrentAiActionResult, With<ActiveAiAction>>,
+fn reset_leaf_results(
+    mut query: Query<&mut LeafNodeResult, With<ActiveNode>>,
     missing: Query<
         Entity,
         (
-            With<ActiveAiAction>,
-            Without<CurrentAiActionResult>,
+            With<ActiveNode>,
+            Without<LeafNodeResult>,
             Without<ControlNodeSystem>,
         ),
     >,
@@ -202,17 +202,17 @@ fn reset_results(
         result.0 = None;
     }
     for entity in &missing {
-        commands.entity(entity).insert(CurrentAiActionResult(None));
+        commands.entity(entity).insert(LeafNodeResult(None));
     }
 }
 
-fn remove_current_result(
-    on: On<Remove, ActiveAiAction>,
-    has_result: Query<(), With<CurrentAiActionResult>>,
+fn on_remove_active_node(
+    on: On<Remove, ActiveNode>,
+    has_result: Query<(), With<LeafNodeResult>>,
     mut commands: Commands,
 ) {
     if has_result.contains(on.entity) {
-        commands.entity(on.entity).remove::<CurrentAiActionResult>();
+        commands.entity(on.entity).remove::<LeafNodeResult>();
     }
 }
 
@@ -232,18 +232,18 @@ fn update_sequence(
     In(entity): In<Entity>,
     world: &mut World,
     node: &mut QueryState<(&SequenceNode, &mut SequenceState, &Children)>,
-) -> Result<AiActionResult> {
+) -> Result<NodeResult> {
     let (&config, state, children) = node.get(world, entity)?;
 
     if let Some(current) = state.current {
         let current_entity = *children.get(current).ok_or("Invalid child index")?;
 
-        if let Some(&res) = world.get::<CurrentAiActionResult>(current_entity) {
-            if res.0 == Some(AiActionResult::Complete) {
-                world.entity_mut(current_entity).remove::<ActiveAiAction>();
+        if let Some(&res) = world.get::<LeafNodeResult>(current_entity) {
+            if res.0 == Some(NodeResult::Complete) {
+                world.entity_mut(current_entity).remove::<ActiveNode>();
                 debug!("{current} completed");
             } else {
-                return Ok(AiActionResult::Continue);
+                return Ok(NodeResult::Continue);
             }
         }
     }
@@ -260,18 +260,18 @@ fn update_sequence(
     debug!("Current = {current}");
 
     if let Some(&cur_child) = children.get(current) {
-        world.entity_mut(cur_child).insert(ActiveAiAction);
-        Ok(AiActionResult::QueueNode(cur_child))
+        world.entity_mut(cur_child).insert(ActiveNode);
+        Ok(NodeResult::QueueNode(cur_child))
     } else if config.repeat && current != 0 && !children.is_empty() {
         debug!("Repeat");
         state.current = Some(0);
         let child = children[0];
-        world.entity_mut(child).insert(ActiveAiAction);
-        Ok(AiActionResult::QueueNode(child))
+        world.entity_mut(child).insert(ActiveNode);
+        Ok(NodeResult::QueueNode(child))
     } else {
         state.current = None;
-        world.entity_mut(entity).remove::<ActiveAiAction>();
-        Ok(AiActionResult::Complete)
+        world.entity_mut(entity).remove::<ActiveNode>();
+        Ok(NodeResult::Complete)
     }
 }
 
@@ -304,7 +304,7 @@ fn update_time_limit(
     In(entity): In<Entity>,
     world: &mut World,
     node: &mut QueryState<(&TimeLimitNode, &mut TimeLimitState, &Children)>,
-) -> Result<AiActionResult> {
+) -> Result<NodeResult> {
     let delta = world.resource::<Time>().delta();
     let (&config, mut state, children) = node.get_mut(world, entity)?;
 
@@ -327,29 +327,29 @@ fn update_time_limit(
     if timer_finished {
         state.timer = None;
         state.child_activated = false;
-        world.entity_mut(child).remove::<ActiveAiAction>();
-        world.entity_mut(entity).remove::<ActiveAiAction>();
-        return Ok(AiActionResult::Complete);
+        world.entity_mut(child).remove::<ActiveNode>();
+        world.entity_mut(entity).remove::<ActiveNode>();
+        return Ok(NodeResult::Complete);
     }
 
     // Check if child completed naturally
-    if let Some(&result) = world.get::<CurrentAiActionResult>(child)
-        && result.0 == Some(AiActionResult::Complete)
+    if let Some(&result) = world.get::<LeafNodeResult>(child)
+        && result.0 == Some(NodeResult::Complete)
     {
         let (_, mut state, _) = node.get_mut(world, entity)?;
         state.timer = None;
         state.child_activated = false;
-        world.entity_mut(child).remove::<ActiveAiAction>();
-        world.entity_mut(entity).remove::<ActiveAiAction>();
-        return Ok(AiActionResult::Complete);
+        world.entity_mut(child).remove::<ActiveNode>();
+        world.entity_mut(entity).remove::<ActiveNode>();
+        return Ok(NodeResult::Complete);
     }
 
     if !child_activated {
         let (_, mut state, _) = node.get_mut(world, entity)?;
         state.child_activated = true;
-        world.entity_mut(child).insert(ActiveAiAction);
-        return Ok(AiActionResult::QueueNode(child));
+        world.entity_mut(child).insert(ActiveNode);
+        return Ok(NodeResult::QueueNode(child));
     }
 
-    Ok(AiActionResult::Continue)
+    Ok(NodeResult::Continue)
 }

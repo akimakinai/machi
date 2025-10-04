@@ -5,8 +5,8 @@ use crate::{
     character::{
         CharacterController, MovementEvent, MovementEventKind,
         ai::{
-            ActiveAiAction, AiActionResult, AiActionSystems, AiOf, BehaviorTreeRoot,
-            CurrentAiActionResult, SequenceNode, TimeLimitNode,
+            ActiveNode, AiActionSystems, AiOf, BehaviorTreeRoot, LeafNodeResult, NodeResult,
+            SequenceNode, TimeLimitNode,
         },
         player::Player,
     },
@@ -59,7 +59,7 @@ fn spawn_enemy(
             AiOf(id),
             SequenceNode { repeat: true },
             BehaviorTreeRoot,
-            ActiveAiAction,
+            ActiveNode,
             children![
                 (
                     AiOf(id),
@@ -76,7 +76,7 @@ fn spawn_enemy(
 struct ChasePlayerAction;
 
 fn chase_action_update(
-    mut query: Query<(&AiOf, &ChasePlayerAction, &mut CurrentAiActionResult), With<ActiveAiAction>>,
+    mut query: Query<(&AiOf, &ChasePlayerAction, &mut LeafNodeResult), With<ActiveNode>>,
     mut transforms: ParamSet<(Query<&Transform, With<Player>>, Query<&mut Transform>)>,
     mut commands: Commands,
 ) -> Result<()> {
@@ -100,7 +100,7 @@ fn chase_action_update(
 
         if planar.length_squared() <= 0.5 {
             debug!("Enemy reached player");
-            result.0 = Some(AiActionResult::Complete);
+            result.0 = Some(NodeResult::Complete);
             continue;
         }
 
@@ -112,7 +112,7 @@ fn chase_action_update(
             kind: MovementEventKind::Move(Vec2::Y),
         });
 
-        result.0 = Some(AiActionResult::Continue);
+        result.0 = Some(NodeResult::Continue);
     }
 
     Ok(())
@@ -128,16 +128,16 @@ impl SleepAction {
 }
 
 fn update_sleep_action(
-    mut query: Query<(&mut SleepAction, &mut CurrentAiActionResult), With<ActiveAiAction>>,
+    mut query: Query<(&mut SleepAction, &mut LeafNodeResult), With<ActiveNode>>,
     time: Res<Time>,
 ) {
     let delta = time.delta();
     for (mut sleep, mut result) in &mut query {
         if sleep.0.tick(delta).just_finished() {
             sleep.0.reset();
-            result.0 = Some(AiActionResult::Complete);
+            result.0 = Some(NodeResult::Complete);
         } else {
-            result.0 = Some(AiActionResult::Continue);
+            result.0 = Some(NodeResult::Continue);
         }
     }
 }
