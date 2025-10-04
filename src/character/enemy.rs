@@ -4,7 +4,10 @@ use bevy::{color::palettes::tailwind::FUCHSIA_400, prelude::*};
 use crate::{
     character::{
         CharacterController, MovementEvent, MovementEventKind,
-        ai::{ActiveAiAction, AiActionResult, AiActionSystems, AiOf, CurrentAiActionResult},
+        ai::{
+            ActiveAiAction, AiActionResult, AiActionSystems, AiOf, BehaviorTreeRoot,
+            CurrentAiActionResult, SequenceNode,
+        },
         player::Player,
     },
     physics::GameLayer,
@@ -16,7 +19,7 @@ impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            chase_action_update.in_set(AiActionSystems::UpdateAction),
+            (update_sleep_action, chase_action_update).in_set(AiActionSystems::UpdateAction),
         )
         .add_systems(Startup, spawn_enemy);
     }
@@ -52,7 +55,16 @@ fn spawn_enemy(
     ));
     let id = enemy.id();
     enemy.with_children(|parent| {
-        parent.spawn((AiOf(id), ChasePlayerAction, ActiveAiAction));
+        parent.spawn((
+            AiOf(id),
+            SequenceNode { repeat: true },
+            BehaviorTreeRoot,
+            ActiveAiAction,
+            children![
+                (AiOf(id), ChasePlayerAction),
+                (AiOf(id), SleepAction::from_seconds(5.0)),
+            ],
+        ));
     });
 }
 
@@ -60,7 +72,7 @@ fn spawn_enemy(
 struct ChasePlayerAction;
 
 fn chase_action_update(
-    mut query: Query<(&AiOf, &ChasePlayerAction, &mut CurrentAiActionResult)>,
+    mut query: Query<(&AiOf, &ChasePlayerAction, &mut CurrentAiActionResult), With<ActiveAiAction>>,
     mut transforms: ParamSet<(Query<&Transform, With<Player>>, Query<&mut Transform>)>,
     mut commands: Commands,
 ) -> Result<()> {
@@ -100,4 +112,28 @@ fn chase_action_update(
     }
 
     Ok(())
+}
+
+#[derive(Component)]
+struct SleepAction(Timer);
+
+impl SleepAction {
+    fn from_seconds(seconds: f32) -> Self {
+        SleepAction(Timer::from_seconds(seconds, TimerMode::Once))
+    }
+}
+
+fn update_sleep_action(
+    mut query: Query<(&mut SleepAction, &mut CurrentAiActionResult), With<ActiveAiAction>>,
+    time: Res<Time>,
+) {
+    let delta = time.delta();
+    for (mut sleep, mut result) in &mut query {
+        if sleep.0.tick(delta).just_finished() {
+            sleep.0.reset();
+            result.0 = Some(AiActionResult::Complete);
+        } else {
+            result.0 = Some(AiActionResult::Continue);
+        }
+    }
 }
