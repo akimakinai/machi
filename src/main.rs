@@ -165,6 +165,9 @@ fn mouse_grabbing(
     paused: Res<State<Pause>>,
 ) -> Result<()> {
     let (mut cursor_opt, mut window) = cursor_opt.single_mut()?;
+    if !window.is_changed() {
+        return Ok(());
+    }
 
     let (grab_mode, visible) = if paused.0 || !window.focused {
         (CursorGrabMode::None, true)
@@ -174,13 +177,8 @@ fn mouse_grabbing(
         (CursorGrabMode::Locked, false)
     };
 
-    cursor_opt
-        .reborrow()
-        .map_unchanged(|o| &mut o.grab_mode)
-        .set_if_neq(grab_mode);
-    cursor_opt
-        .map_unchanged(|o| &mut o.visible)
-        .set_if_neq(visible);
+    cursor_opt.grab_mode = grab_mode;
+    cursor_opt.visible = visible;
 
     Ok(())
 }
