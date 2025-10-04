@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::{
     ecs::{
         entity::EntityHashSet,
@@ -27,7 +29,8 @@ impl Plugin for AiPlugin {
             (update_behavior_trees, reset_results)
                 .chain()
                 .in_set(AiActionSystems::PreUpdateAction),
-        );
+        )
+        .add_observer(remove_current_result);
     }
 }
 
@@ -96,68 +99,6 @@ impl ControlNodeSystemInner {
             }
         }
     }
-}
-
-#[derive(Component, Clone, Copy)]
-#[require(SequenceState, ControlNodeSystem::new(update_sequence))]
-pub struct SequenceNode {
-    pub repeat: bool,
-}
-
-#[derive(Component, Default)]
-struct SequenceState {
-    current: Option<usize>,
-}
-
-fn update_sequence(
-    In(entity): In<Entity>,
-    world: &mut World,
-    node: &mut QueryState<(&SequenceNode, &mut SequenceState, &Children)>,
-) -> Result<AiActionResult> {
-    let (&config, state, children) = node.get(world, entity)?;
-
-    if let Some(current) = state.current {
-        let current_entity = *children.get(current).ok_or("Invalid child index")?;
-
-        if let Some(&res) = world.get::<CurrentAiActionResult>(current_entity) {
-            if res.0 == Some(AiActionResult::Complete) {
-                world.entity_mut(current_entity).remove::<ActiveAiAction>();
-                debug!("{current} completed");
-            } else {
-                return Ok(AiActionResult::Continue);
-            }
-        }
-    }
-
-    let (_, mut state, children) = node.get_mut(world, entity)?;
-    let current = if let Some(current) = &mut state.current {
-        *current += 1;
-        *current
-    } else {
-        state.current = Some(0);
-        0
-    };
-
-    debug!("Current = {current}");
-
-    if let Some(&cur_child) = children.get(current) {
-        world.entity_mut(cur_child).insert(ActiveAiAction);
-        Ok(AiActionResult::QueueNode(cur_child))
-    } else if config.repeat && current != 0 && !children.is_empty() {
-        debug!("Repeat");
-        state.current = Some(0);
-        let child = children[0];
-        world.entity_mut(child).insert(ActiveAiAction);
-        Ok(AiActionResult::QueueNode(child))
-    } else {
-        state.current = None;
-        world.entity_mut(entity).remove::<ActiveAiAction>();
-        Ok(AiActionResult::Complete)
-    }
-}
-
-fn children_to_slice(c: Option<&Children>) -> &[Entity] {
-    c.map(|c| &**c).unwrap_or(&[])
 }
 
 fn update_behavior_trees(
@@ -232,7 +173,6 @@ fn update_behavior_trees(
         } else {
             // leaf node is active
             if let Some(&parent) = node_parent.get(&node) {
-                debug!("Node {node} is active, activating parent {parent}");
                 leaf_nodes.push(parent);
             } else {
                 error!(
@@ -264,4 +204,152 @@ fn reset_results(
     for entity in &missing {
         commands.entity(entity).insert(CurrentAiActionResult(None));
     }
+}
+
+fn remove_current_result(
+    on: On<Remove, ActiveAiAction>,
+    has_result: Query<(), With<CurrentAiActionResult>>,
+    mut commands: Commands,
+) {
+    if has_result.contains(on.entity) {
+        commands.entity(on.entity).remove::<CurrentAiActionResult>();
+    }
+}
+
+/// Control node that runs its children in sequence.
+#[derive(Component, Clone, Copy)]
+#[require(SequenceState, ControlNodeSystem::new(update_sequence))]
+pub struct SequenceNode {
+    pub repeat: bool,
+}
+
+#[derive(Component, Default)]
+struct SequenceState {
+    current: Option<usize>,
+}
+
+fn update_sequence(
+    In(entity): In<Entity>,
+    world: &mut World,
+    node: &mut QueryState<(&SequenceNode, &mut SequenceState, &Children)>,
+) -> Result<AiActionResult> {
+    let (&config, state, children) = node.get(world, entity)?;
+
+    if let Some(current) = state.current {
+        let current_entity = *children.get(current).ok_or("Invalid child index")?;
+
+        if let Some(&res) = world.get::<CurrentAiActionResult>(current_entity) {
+            if res.0 == Some(AiActionResult::Complete) {
+                world.entity_mut(current_entity).remove::<ActiveAiAction>();
+                debug!("{current} completed");
+            } else {
+                return Ok(AiActionResult::Continue);
+            }
+        }
+    }
+
+    let (_, mut state, children) = node.get_mut(world, entity)?;
+    let current = if let Some(current) = &mut state.current {
+        *current += 1;
+        *current
+    } else {
+        state.current = Some(0);
+        0
+    };
+
+    debug!("Current = {current}");
+
+    if let Some(&cur_child) = children.get(current) {
+        world.entity_mut(cur_child).insert(ActiveAiAction);
+        Ok(AiActionResult::QueueNode(cur_child))
+    } else if config.repeat && current != 0 && !children.is_empty() {
+        debug!("Repeat");
+        state.current = Some(0);
+        let child = children[0];
+        world.entity_mut(child).insert(ActiveAiAction);
+        Ok(AiActionResult::QueueNode(child))
+    } else {
+        state.current = None;
+        world.entity_mut(entity).remove::<ActiveAiAction>();
+        Ok(AiActionResult::Complete)
+    }
+}
+
+fn children_to_slice(c: Option<&Children>) -> &[Entity] {
+    c.map(|c| &**c).unwrap_or(&[])
+}
+
+/// Control node that runs a child for a specified duration, then completes.
+#[derive(Component, Clone, Copy)]
+#[require(TimeLimitState, ControlNodeSystem::new(update_time_limit))]
+pub struct TimeLimitNode {
+    pub duration: Duration,
+}
+
+impl TimeLimitNode {
+    pub fn from_seconds(seconds: f32) -> Self {
+        TimeLimitNode {
+            duration: Duration::from_secs_f32(seconds),
+        }
+    }
+}
+
+#[derive(Component, Default)]
+struct TimeLimitState {
+    timer: Option<Timer>,
+    child_activated: bool,
+}
+
+fn update_time_limit(
+    In(entity): In<Entity>,
+    world: &mut World,
+    node: &mut QueryState<(&TimeLimitNode, &mut TimeLimitState, &Children)>,
+) -> Result<AiActionResult> {
+    let delta = world.resource::<Time>().delta();
+    let (&config, mut state, children) = node.get_mut(world, entity)?;
+
+    let &child = children
+        .first()
+        .ok_or("TimeLimitNode requires exactly one child")?;
+    if children.len() > 1 {
+        warn!("TimeLimitNode has more than one child, only the first will be used");
+    }
+
+    // Initialize timer if not started (first run or after reset)
+    if state.timer.is_none() {
+        state.timer = Some(Timer::new(config.duration, TimerMode::Once));
+        state.child_activated = false;
+    }
+
+    let timer_finished = state.timer.as_mut().unwrap().tick(delta).just_finished();
+    let child_activated = state.child_activated;
+
+    if timer_finished {
+        state.timer = None;
+        state.child_activated = false;
+        world.entity_mut(child).remove::<ActiveAiAction>();
+        world.entity_mut(entity).remove::<ActiveAiAction>();
+        return Ok(AiActionResult::Complete);
+    }
+
+    // Check if child completed naturally
+    if let Some(&result) = world.get::<CurrentAiActionResult>(child)
+        && result.0 == Some(AiActionResult::Complete)
+    {
+        let (_, mut state, _) = node.get_mut(world, entity)?;
+        state.timer = None;
+        state.child_activated = false;
+        world.entity_mut(child).remove::<ActiveAiAction>();
+        world.entity_mut(entity).remove::<ActiveAiAction>();
+        return Ok(AiActionResult::Complete);
+    }
+
+    if !child_activated {
+        let (_, mut state, _) = node.get_mut(world, entity)?;
+        state.child_activated = true;
+        world.entity_mut(child).insert(ActiveAiAction);
+        return Ok(AiActionResult::QueueNode(child));
+    }
+
+    Ok(AiActionResult::Continue)
 }

@@ -6,7 +6,7 @@ use crate::{
         CharacterController, MovementEvent, MovementEventKind,
         ai::{
             ActiveAiAction, AiActionResult, AiActionSystems, AiOf, BehaviorTreeRoot,
-            CurrentAiActionResult, SequenceNode,
+            CurrentAiActionResult, SequenceNode, TimeLimitNode,
         },
         player::Player,
     },
@@ -61,7 +61,11 @@ fn spawn_enemy(
             BehaviorTreeRoot,
             ActiveAiAction,
             children![
-                (AiOf(id), ChasePlayerAction),
+                (
+                    AiOf(id),
+                    TimeLimitNode::from_seconds(10.0),
+                    children![(AiOf(id), ChasePlayerAction)],
+                ),
                 (AiOf(id), SleepAction::from_seconds(5.0)),
             ],
         ));
