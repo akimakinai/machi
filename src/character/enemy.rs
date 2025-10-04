@@ -50,7 +50,7 @@ fn spawn_enemy(
             movement_acceleration: 50.0,
             ..default()
         },
-        CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain]),
+        CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain, GameLayer::Character]),
     );
 
     for i in 0..3 {

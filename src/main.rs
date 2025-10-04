@@ -142,7 +142,7 @@ fn spawn_player(
             collider,
             CollisionLayers::new(
                 [GameLayer::Character],
-                [GameLayer::Terrain, GameLayer::Object],
+                [GameLayer::Terrain, GameLayer::Object, GameLayer::Character],
             ),
             Player,
         ))
