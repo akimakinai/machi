@@ -1,5 +1,8 @@
 use bevy::{
-    ecs::{entity::EntityHashSet, system::SystemState},
+    ecs::{
+        entity::EntityHashSet,
+        system::{BoxedSystem, SystemId, SystemState},
+    },
     platform::collections::HashMap,
     prelude::*,
 };
@@ -41,7 +44,7 @@ pub enum AiActionSystems {
 #[derive(Component)]
 pub struct AiOf(pub Entity);
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Clone, Copy)]
 pub struct CurrentAiActionResult(pub Option<AiActionResult>);
 
 #[derive(Component)]
@@ -57,17 +60,46 @@ pub enum AiActionResult {
 #[derive(Component)]
 pub struct BehaviorTreeRoot;
 
-#[derive(Component, Clone, Copy)]
-pub struct ControlNodeSystem(fn(&mut World, Entity) -> Result<AiActionResult>);
+#[derive(Component)]
+pub struct ControlNodeSystem(Option<ControlNodeSystemInner>);
+
+#[derive(Component)]
+pub enum ControlNodeSystemInner {
+    Uncached(Option<BoxedSystem<In<Entity>, Result<AiActionResult>>>),
+    Cached(SystemId<In<Entity>, Result<AiActionResult>>),
+}
 
 impl ControlNodeSystem {
-    pub fn run(&self, world: &mut World, entity: Entity) -> Result<AiActionResult> {
-        (self.0)(world, entity)
+    pub fn new<F, M>(system: F) -> Self
+    where
+        F: IntoSystem<In<Entity>, Result<AiActionResult>, M> + 'static,
+    {
+        ControlNodeSystem(Some(ControlNodeSystemInner::Uncached(Some(Box::new(
+            F::into_system(system),
+        )))))
+    }
+}
+
+impl ControlNodeSystemInner {
+    pub fn run(&mut self, world: &mut World, entity: Entity) -> Result<AiActionResult> {
+        if let ControlNodeSystemInner::Uncached(system) = self {
+            *self = ControlNodeSystemInner::Cached(
+                world.register_boxed_system(system.take().expect("this can never be None")),
+            );
+        }
+        match self {
+            ControlNodeSystemInner::Cached(system_id) => {
+                world.run_system_with(*system_id, entity)?
+            }
+            ControlNodeSystemInner::Uncached(_) => {
+                unreachable!("This variant has been eliminated above")
+            }
+        }
     }
 }
 
 #[derive(Component, Clone, Copy)]
-#[require(SequenceState, ControlNodeSystem(update_sequence))]
+#[require(SequenceState, ControlNodeSystem::new(update_sequence))]
 pub struct SequenceNode {
     pub repeat: bool,
 }
@@ -77,30 +109,19 @@ struct SequenceState {
     current: Option<usize>,
 }
 
-fn update_sequence(world: &mut World, entity: Entity) -> Result<AiActionResult> {
-    let (mut entities, mut commands) = world.entities_and_commands();
-    let mut node = entities.get_mut(entity)?;
-
-    let children = node
-        .get::<Children>()
-        .ok_or("Missing Children")?
-        .iter()
-        .collect::<Vec<_>>();
-
-    let &config = node
-        .get::<SequenceNode>()
-        .expect("Update function mismatch with node");
-
-    let state = node
-        .get_mut::<SequenceState>()
-        .ok_or_else(|| format!("Missing {}", ShortName::of::<SequenceState>()))?;
+fn update_sequence(
+    In(entity): In<Entity>,
+    world: &mut World,
+    node: &mut QueryState<(&SequenceNode, &mut SequenceState, &Children)>,
+) -> Result<AiActionResult> {
+    let (&config, state, children) = node.get(world, entity)?;
 
     if let Some(current) = state.current {
         let current_entity = *children.get(current).ok_or("Invalid child index")?;
 
-        if let Some(res) = entities.get(current_entity)?.get::<CurrentAiActionResult>() {
+        if let Some(&res) = world.get::<CurrentAiActionResult>(current_entity) {
             if res.0 == Some(AiActionResult::Complete) {
-                commands.entity(current_entity).remove::<ActiveAiAction>();
+                world.entity_mut(current_entity).remove::<ActiveAiAction>();
                 debug!("{current} completed");
             } else {
                 return Ok(AiActionResult::Continue);
@@ -108,10 +129,7 @@ fn update_sequence(world: &mut World, entity: Entity) -> Result<AiActionResult> 
         }
     }
 
-    let mut node = entities.get_mut(entity)?;
-    let mut state = node
-        .get_mut::<SequenceState>()
-        .ok_or_else(|| format!("Missing {}", ShortName::of::<SequenceState>()))?;
+    let (_, mut state, children) = node.get_mut(world, entity)?;
     let current = if let Some(current) = &mut state.current {
         *current += 1;
         *current
@@ -123,17 +141,17 @@ fn update_sequence(world: &mut World, entity: Entity) -> Result<AiActionResult> 
     debug!("Current = {current}");
 
     if let Some(&cur_child) = children.get(current) {
-        commands.entity(cur_child).insert(ActiveAiAction);
+        world.entity_mut(cur_child).insert(ActiveAiAction);
         Ok(AiActionResult::QueueNode(cur_child))
     } else if config.repeat && current != 0 && !children.is_empty() {
         debug!("Repeat");
         state.current = Some(0);
         let child = children[0];
-        commands.entity(child).insert(ActiveAiAction);
+        world.entity_mut(child).insert(ActiveAiAction);
         Ok(AiActionResult::QueueNode(child))
     } else {
         state.current = None;
-        commands.entity(entity).remove::<ActiveAiAction>();
+        world.entity_mut(entity).remove::<ActiveAiAction>();
         Ok(AiActionResult::Complete)
     }
 }
@@ -183,8 +201,16 @@ fn update_behavior_trees(
     let mut leaf_nodes = leaf_nodes.into_iter().collect::<Vec<_>>();
 
     while let Some(node) = leaf_nodes.pop() {
-        if let Some(&system) = world.get::<ControlNodeSystem>(node) {
+        // Take the inner out to regain access to world
+        if let Some(mut system) = world
+            .get_mut::<ControlNodeSystem>(node)
+            .and_then(|mut s| s.0.take())
+        {
             let action_result = system.run(world, node)?;
+            world
+                .get_mut::<ControlNodeSystem>(node)
+                .expect("Control node system removed itself")
+                .0 = Some(system);
             match action_result {
                 AiActionResult::QueueNode(new_node) => {
                     if world.get::<ControlNodeSystem>(new_node).is_some() {
