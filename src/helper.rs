@@ -31,17 +31,15 @@ impl std::fmt::Display for DebugEntity {
 
 impl WorldExt for World {
     fn debug_entity(&self, entity: Entity) -> Result<DebugEntity> {
-        let component_ids = self
-            .get_entity(entity)?
-            .archetype()
-            .components()
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
-        let components = self.components();
+        let entity_ref = self.get_entity(entity)?;
+        let component_ids = entity_ref.archetype().components();
         let component_names = component_ids
-            .into_iter()
-            .filter_map(|id| components.get_info(id).map(|info| info.name().to_string()))
+            .iter()
+            .filter_map(|&id| {
+                self.components()
+                    .get_info(id)
+                    .map(|info| info.name().to_string())
+            })
             .collect::<Vec<_>>();
         Ok(DebugEntity {
             id: entity,

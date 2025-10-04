@@ -125,27 +125,21 @@ fn update_sequence(world: &mut World, entity: Entity) -> Result<AiActionResult> 
     if let Some(&cur_child) = children.get(current) {
         commands.entity(cur_child).insert(ActiveAiAction);
         Ok(AiActionResult::QueueNode(cur_child))
+    } else if config.repeat && current != 0 && !children.is_empty() {
+        debug!("Repeat");
+        state.current = Some(0);
+        let child = children[0];
+        commands.entity(child).insert(ActiveAiAction);
+        Ok(AiActionResult::QueueNode(child))
     } else {
-        if config.repeat && current != 0 && !children.is_empty() {
-            debug!("Repeat");
-            state.current = Some(0);
-            let child = children[0];
-            commands.entity(child).insert(ActiveAiAction);
-            Ok(AiActionResult::QueueNode(child))
-        } else {
-            state.current = None;
-            commands.entity(entity).remove::<ActiveAiAction>();
-            Ok(AiActionResult::Complete)
-        }
+        state.current = None;
+        commands.entity(entity).remove::<ActiveAiAction>();
+        Ok(AiActionResult::Complete)
     }
 }
 
 fn children_to_slice(c: Option<&Children>) -> &[Entity] {
-    if let Some(children) = c {
-        &children
-    } else {
-        &[]
-    }
+    c.map(|c| &**c).unwrap_or(&[])
 }
 
 fn update_behavior_trees(
@@ -169,10 +163,8 @@ fn update_behavior_trees(
     let mut leaf_nodes = EntityHashSet::new();
 
     for (id, child_of, children, is_root) in &mut active_nodes {
-        if let Some(&ChildOf(parent)) = child_of {
-            if !is_root {
-                node_parent.insert(id, parent);
-            }
+        if !is_root && let Some(&ChildOf(parent)) = child_of {
+            node_parent.insert(id, parent);
         }
 
         // Nodes without active children are considered leaf nodes
