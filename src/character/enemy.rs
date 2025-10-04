@@ -25,7 +25,7 @@ impl Plugin for EnemyPlugin {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 #[require(Transform, Visibility)]
 pub struct Enemy;
 
@@ -37,7 +37,7 @@ fn spawn_enemy(
     let shape = Sphere::new(0.5);
     let collider = shape.collider();
 
-    let mut enemy = commands.spawn((
+    let enemy_base = (
         Name::new("Enemy"),
         Enemy,
         Mesh3d(meshes.add(shape.mesh().ico(32).unwrap())),
@@ -50,26 +50,30 @@ fn spawn_enemy(
             movement_acceleration: 50.0,
             ..default()
         },
-        Transform::from_translation(Vec3::new(15.0, 20.0, 20.0)),
         CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain]),
-    ));
-    let id = enemy.id();
-    enemy.with_children(|parent| {
-        parent.spawn((
-            AiOf(id),
-            SequenceNode { repeat: true },
-            BehaviorTreeRoot,
-            ActiveNode,
-            children![
-                (
-                    AiOf(id),
-                    TimeLimitNode::from_seconds(10.0),
-                    children![(AiOf(id), ChasePlayerAction)],
-                ),
-                (AiOf(id), SleepAction::from_seconds(5.0)),
-            ],
-        ));
-    });
+    );
+
+    for i in 0..3 {
+        let position = Vec3::new(15.0 + i as f32 * 5.0, 20.0, 20.0 + i as f32 * 5.0);
+        let mut enemy = commands.spawn((enemy_base.clone(), Transform::from_translation(position)));
+        let id = enemy.id();
+        enemy.with_children(|parent| {
+            parent.spawn((
+                AiOf(id),
+                SequenceNode { repeat: true },
+                BehaviorTreeRoot,
+                ActiveNode,
+                children![
+                    (
+                        AiOf(id),
+                        TimeLimitNode::from_seconds(10.0),
+                        children![(AiOf(id), ChasePlayerAction)],
+                    ),
+                    (AiOf(id), SleepAction::from_seconds(5.0)),
+                ],
+            ));
+        });
+    }
 }
 
 #[derive(Component)]
