@@ -5,7 +5,7 @@ use crate::{
     character::{
         CharacterController, MovementEvent, MovementEventKind,
         ai::{
-            ActiveNode, AiActionSystems, AiOf, BehaviorTreeRoot, LeafNodeResult, SequenceNode,
+            ActiveNode, AiActionSystems, AiTarget, BehaviorTreeRoot, LeafNodeResult, SequenceNode,
             TimeLimitNode,
         },
         player::Player,
@@ -62,17 +62,15 @@ fn spawn_enemy(
         let id = enemy.id();
         enemy.with_children(|parent| {
             parent.spawn((
-                AiOf(id),
                 SequenceNode { repeat: true },
-                BehaviorTreeRoot,
+                BehaviorTreeRoot::new(id),
                 ActiveNode,
                 children![
                     (
-                        AiOf(id),
                         TimeLimitNode::from_seconds(10.0),
-                        children![(AiOf(id), ChasePlayerAction)],
+                        children![(ChasePlayerAction)],
                     ),
-                    (AiOf(id), SleepAction::from_seconds(5.0)),
+                    (SleepAction::from_seconds(5.0)),
                 ],
             ));
         });
@@ -83,7 +81,8 @@ fn spawn_enemy(
 struct ChasePlayerAction;
 
 fn chase_action_update(
-    mut query: Query<(&AiOf, &ChasePlayerAction, &mut LeafNodeResult), With<ActiveNode>>,
+    ai_target: AiTarget,
+    mut query: Query<(Entity, &ChasePlayerAction, &mut LeafNodeResult), With<ActiveNode>>,
     mut transforms: ParamSet<(Query<&Transform, With<Player>>, Query<&mut Transform>)>,
     mut commands: Commands,
 ) -> Result<()> {
@@ -98,8 +97,15 @@ fn chase_action_update(
 
     let mut enemy_transforms = transforms.p1();
 
-    for (&AiOf(entity), _action, mut result) in &mut query {
-        let Ok(mut enemy_transform) = enemy_transforms.get_mut(entity) else {
+    for (id, _action, mut result) in &mut query {
+        let target = match ai_target.get_target(id) {
+            Ok(target) => target,
+            Err(e) => {
+                error!("could not get target: {e}");
+                continue;
+            }
+        };
+        let Ok(mut enemy_transform) = enemy_transforms.get_mut(target) else {
             continue;
         };
         let to_player = player_translation - enemy_transform.translation;
@@ -115,7 +121,7 @@ fn chase_action_update(
         enemy_transform.rotation = Quat::from_rotation_arc(-Vec3::Z, planar);
 
         commands.trigger(MovementEvent {
-            entity,
+            entity: target,
             kind: MovementEventKind::Move(Vec2::Y),
         });
 

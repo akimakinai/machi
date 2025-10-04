@@ -3,7 +3,7 @@ use std::time::Duration;
 use bevy::{
     ecs::{
         entity::EntityHashSet,
-        system::{BoxedSystem, SystemId, SystemState},
+        system::{BoxedSystem, SystemId, SystemParam, SystemState, lifetimeless::Read},
     },
     platform::collections::HashMap,
     prelude::*,
@@ -30,6 +30,7 @@ impl Plugin for AiPlugin {
                 .chain()
                 .in_set(AiActionSystems::PreUpdateAction),
         )
+        .add_observer(on_add_active_node)
         .add_observer(on_remove_active_node);
     }
 }
@@ -40,9 +41,27 @@ pub enum AiActionSystems {
     UpdateAction,
 }
 
-// TODO: make this relation
-#[derive(Component)]
-pub struct AiOf(pub Entity);
+#[derive(SystemParam)]
+pub struct AiTarget<'w, 's> {
+    parent: Query<'w, 's, Read<ChildOf>>,
+    root: Query<'w, 's, Read<BehaviorTreeRoot>>,
+}
+
+impl<'w, 's> AiTarget<'w, 's> {
+    /// Returns the target entity for the behavior tree that `entity` is part of.
+    pub fn get_target(&self, mut entity: Entity) -> Result<Entity> {
+        if let Ok(root) = self.root.get(entity) {
+            return Ok(root.target);
+        }
+        while let Ok(parent) = self.parent.get(entity).map(|p| p.parent()) {
+            entity = parent;
+            if let Ok(root) = self.root.get(entity) {
+                return Ok(root.target);
+            }
+        }
+        Err("No BehaviorTreeRoot found in parents".into())
+    }
+}
 
 /// Active leaf nodes should set this to indicate their result to their parent.
 #[derive(Component, Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -80,7 +99,15 @@ pub enum NodeResult {
 }
 
 #[derive(Component)]
-pub struct BehaviorTreeRoot;
+pub struct BehaviorTreeRoot {
+    pub target: Entity,
+}
+
+impl BehaviorTreeRoot {
+    pub fn new(target: Entity) -> Self {
+        BehaviorTreeRoot { target }
+    }
+}
 
 #[derive(Component)]
 pub struct ControlNodeSystem(Option<ControlNodeSystemInner>);
@@ -205,23 +232,19 @@ fn update_behavior_trees(
     Ok(())
 }
 
-fn reset_leaf_results(
-    mut query: Query<&mut LeafNodeResult, With<ActiveNode>>,
-    missing: Query<
-        Entity,
-        (
-            With<ActiveNode>,
-            Without<LeafNodeResult>,
-            Without<ControlNodeSystem>,
-        ),
-    >,
-    mut commands: Commands,
-) {
+fn reset_leaf_results(mut query: Query<&mut LeafNodeResult, With<ActiveNode>>) {
     for mut result in &mut query {
         result.reset();
     }
-    for entity in &missing {
-        commands.entity(entity).insert(LeafNodeResult::Idle);
+}
+
+fn on_add_active_node(
+    on: On<Add, ActiveNode>,
+    has_result_or_control: Query<(), Or<(With<LeafNodeResult>, With<ControlNodeSystem>)>>,
+    mut commands: Commands,
+) {
+    if !has_result_or_control.contains(on.entity) {
+        commands.entity(on.entity).insert(LeafNodeResult::Idle);
     }
 }
 
