@@ -5,8 +5,8 @@ use crate::{
     character::{
         CharacterController, MovementEvent, MovementEventKind,
         ai::{
-            ActiveNode, AiActionSystems, AiOf, BehaviorTreeRoot, LeafNodeResult, NodeResult,
-            SequenceNode, TimeLimitNode,
+            ActiveNode, AiActionSystems, AiOf, BehaviorTreeRoot, LeafNodeResult, SequenceNode,
+            TimeLimitNode,
         },
         player::Player,
     },
@@ -50,7 +50,10 @@ fn spawn_enemy(
             movement_acceleration: 50.0,
             ..default()
         },
-        CollisionLayers::new([GameLayer::Character], [GameLayer::Terrain, GameLayer::Character]),
+        CollisionLayers::new(
+            [GameLayer::Character],
+            [GameLayer::Terrain, GameLayer::Character],
+        ),
     );
 
     for i in 0..3 {
@@ -104,7 +107,7 @@ fn chase_action_update(
 
         if planar.length_squared() <= 0.5 {
             debug!("Enemy reached player");
-            result.0 = Some(NodeResult::Complete);
+            result.set_complete();
             continue;
         }
 
@@ -116,7 +119,7 @@ fn chase_action_update(
             kind: MovementEventKind::Move(Vec2::Y),
         });
 
-        result.0 = Some(NodeResult::Continue);
+        result.set_continue();
     }
 
     Ok(())
@@ -139,9 +142,9 @@ fn update_sleep_action(
     for (mut sleep, mut result) in &mut query {
         if sleep.0.tick(delta).just_finished() {
             sleep.0.reset();
-            result.0 = Some(NodeResult::Complete);
+            result.set_complete();
         } else {
-            result.0 = Some(NodeResult::Continue);
+            result.set_continue();
         }
     }
 }

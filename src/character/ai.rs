@@ -45,8 +45,27 @@ pub enum AiActionSystems {
 pub struct AiOf(pub Entity);
 
 /// Active leaf nodes should set this to indicate their result to their parent.
-#[derive(Component, Default, Clone, Copy)]
-pub struct LeafNodeResult(pub Option<NodeResult>);
+#[derive(Component, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LeafNodeResult {
+    #[default]
+    Idle,
+    Continue,
+    Complete,
+}
+
+impl LeafNodeResult {
+    pub fn reset(&mut self) {
+        *self = LeafNodeResult::Idle;
+    }
+
+    pub fn set_continue(&mut self) {
+        *self = LeafNodeResult::Continue;
+    }
+
+    pub fn set_complete(&mut self) {
+        *self = LeafNodeResult::Complete;
+    }
+}
 
 /// Marker component for currently active nodes.
 /// If a leaf node is active, all its parents are also active.
@@ -199,10 +218,10 @@ fn reset_leaf_results(
     mut commands: Commands,
 ) {
     for mut result in &mut query {
-        result.0 = None;
+        result.reset();
     }
     for entity in &missing {
-        commands.entity(entity).insert(LeafNodeResult(None));
+        commands.entity(entity).insert(LeafNodeResult::Idle);
     }
 }
 
@@ -239,7 +258,7 @@ fn update_sequence(
         let current_entity = *children.get(current).ok_or("Invalid child index")?;
 
         if let Some(&res) = world.get::<LeafNodeResult>(current_entity) {
-            if res.0 == Some(NodeResult::Complete) {
+            if res == LeafNodeResult::Complete {
                 world.entity_mut(current_entity).remove::<ActiveNode>();
                 debug!("{current} completed");
             } else {
@@ -334,7 +353,7 @@ fn update_time_limit(
 
     // Check if child completed naturally
     if let Some(&result) = world.get::<LeafNodeResult>(child)
-        && result.0 == Some(NodeResult::Complete)
+        && result == LeafNodeResult::Complete
     {
         let (_, mut state, _) = node.get_mut(world, entity)?;
         state.timer = None;
