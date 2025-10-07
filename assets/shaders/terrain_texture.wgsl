@@ -65,6 +65,16 @@ fn fragment(
     var crack_normal: vec4<f32> = vec4(0.0);
 
     let eps = 0.0001;
+    let durability = mesh.uv_b.x;
+    
+    let crack_blend = (1.0 - durability);
+    let sample_crack = crack_blend > 0.01;
+    var crack_color_sample: vec4<f32>;
+    var crack_normal_sample: vec4<f32>;
+    if (sample_crack) {
+        crack_color_sample = sample_color(0u, mesh.world_position.xyz, tri_weights);
+        crack_normal_sample = sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign);
+    }
 
     if (weights.x > eps) {
         let c = sample_color(1u, mesh.world_position.xyz, tri_weights);
@@ -72,8 +82,10 @@ fn fragment(
         let n = sample_normal(1u, mesh.world_position.xyz, tri_weights, axis_sign);
         accum_normal += n.xyz * weights.x;
 
-        crack_color += sample_color(0u, mesh.world_position.xyz, tri_weights) * weights.x;
-        crack_normal += sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign) * weights.x;
+        if (sample_crack) {
+            crack_color += crack_color_sample * weights.x;
+            crack_normal += crack_normal_sample * weights.x;
+        }
     }
     if (weights.y > eps) {
         let c = sample_color(2u, mesh.world_position.xyz, tri_weights);
@@ -81,8 +93,10 @@ fn fragment(
         let n = sample_normal(2u, mesh.world_position.xyz, tri_weights, axis_sign);
         accum_normal += n.xyz * weights.y;
 
-        crack_color += sample_color(0u, mesh.world_position.xyz, tri_weights) * weights.y;
-        crack_normal += sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign) * weights.y;
+        if (sample_crack) {
+            crack_color += crack_color_sample * weights.y;
+            crack_normal += crack_normal_sample * weights.y;
+        }
     }
     if (weights.z > eps) {
         let c = sample_color(3u, mesh.world_position.xyz, tri_weights);
@@ -90,8 +104,10 @@ fn fragment(
         let n = sample_normal(3u, mesh.world_position.xyz, tri_weights, axis_sign);
         accum_normal += n.xyz * weights.z;
 
-        crack_color += sample_color(0u, mesh.world_position.xyz, tri_weights) * weights.z;
-        crack_normal += sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign) * weights.z;
+        if (sample_crack) {
+            crack_color += crack_color_sample * weights.z;
+            crack_normal += crack_normal_sample * weights.z;
+        }
     }
     if (weights.w > eps) {
         let c = sample_color(4u, mesh.world_position.xyz, tri_weights);
@@ -99,13 +115,16 @@ fn fragment(
         let n = sample_normal(4u, mesh.world_position.xyz, tri_weights, axis_sign);
         accum_normal += n.xyz * weights.w;
 
-        crack_color += sample_color(0u, mesh.world_position.xyz, tri_weights) * weights.w;
-        crack_normal += sample_normal(0u, mesh.world_position.xyz, tri_weights, axis_sign) * weights.w;
+        if (sample_crack) {
+            crack_color += crack_color_sample * weights.w;
+            crack_normal += crack_normal_sample * weights.w;
+        }
     }
 
-    let durability = mesh.uv_b.x;
-    accum_color = vec4(mix(accum_color.rgb, crack_color.rgb, (1.0 - durability) * crack_color.a), 1.0);
-    accum_normal = mix(accum_normal, crack_normal.rgb, (1.0 - durability) * crack_normal.a);
+    if (sample_crack) {
+        accum_color = vec4(mix(accum_color.rgb, crack_color.rgb, crack_blend * crack_color.a), 1.0);
+        accum_normal = mix(accum_normal, crack_normal.rgb, crack_blend * crack_normal.a);
+    }
 
     pbr_input.material.base_color = min(accum_color, vec4<f32>(1.0));
     pbr_input.N = normalize(accum_normal);
