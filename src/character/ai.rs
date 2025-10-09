@@ -112,6 +112,7 @@ impl BehaviorTreeRoot {
 #[derive(Component)]
 pub struct ControlNodeSystem(Option<ControlNodeSystemInner>);
 
+// we have to be able to take this out, as `&mut World` is needed to register/run the system
 #[derive(Component)]
 pub enum ControlNodeSystemInner {
     Uncached(Option<BoxedSystem<In<Entity>, Result<NodeResult>>>),
@@ -147,6 +148,7 @@ impl ControlNodeSystemInner {
     }
 }
 
+/// Evaluates and updates all behavior trees.
 fn update_behavior_trees(
     world: &mut World,
     queries: &mut SystemState<(
@@ -305,6 +307,7 @@ fn update_sequence(
         world.entity_mut(cur_child).insert(ActiveNode);
         Ok(NodeResult::QueueNode(cur_child))
     } else if config.repeat && current != 0 && !children.is_empty() {
+        // Queue child 0 if configured to `repeat`, and `current` ran off indices
         debug!("Repeat");
         state.current = Some(0);
         let child = children[0];
@@ -371,6 +374,7 @@ fn update_time_limit(
         state.child_activated = false;
         world.entity_mut(child).remove::<ActiveNode>();
         world.entity_mut(entity).remove::<ActiveNode>();
+        // TODO: remove `ActiveNode` recursively?
         return Ok(NodeResult::Complete);
     }
 
