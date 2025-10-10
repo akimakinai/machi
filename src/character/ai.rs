@@ -372,9 +372,7 @@ fn update_time_limit(
     if timer_finished {
         state.timer = None;
         state.child_activated = false;
-        world.entity_mut(child).remove::<ActiveNode>();
-        world.entity_mut(entity).remove::<ActiveNode>();
-        // TODO: remove `ActiveNode` recursively?
+        remove_active_node(world, entity);
         return Ok(NodeResult::Complete);
     }
 
@@ -385,8 +383,7 @@ fn update_time_limit(
         let (_, mut state, _) = node.get_mut(world, entity)?;
         state.timer = None;
         state.child_activated = false;
-        world.entity_mut(child).remove::<ActiveNode>();
-        world.entity_mut(entity).remove::<ActiveNode>();
+        remove_active_node(world, entity);
         return Ok(NodeResult::Complete);
     }
 
@@ -398,4 +395,16 @@ fn update_time_limit(
     }
 
     Ok(NodeResult::Continue)
+}
+
+fn remove_active_node(world: &mut World, entity: Entity) {
+    if world.get::<ActiveNode>(entity).is_some() {
+        world.entity_mut(entity).remove::<ActiveNode>();
+    }
+    if let Some(children) = world.get::<Children>(entity) {
+        let children = children.to_vec();
+        for child in children {
+            remove_active_node(world, child);
+        }
+    }
 }
