@@ -19,7 +19,10 @@ fn update_callout_target<T: CalloutTarget>(
     mut query: Query<(&T, &T::Source, &mut CalloutTargetRect)>,
     camera_query: Query<(&Camera, &GlobalTransform), With<CalloutTargetCamera>>,
 ) -> Result<()> {
-    let camera = camera_query.single()?;
+    let Ok(camera) = camera_query.single() else {
+        error_once!("No camera with CalloutTargetCamera found.");
+        return Ok(());
+    };
 
     for (target, source, mut rect) in &mut query {
         if let Ok(new_rect) = target.callout_target(source, camera) {
@@ -32,7 +35,6 @@ fn update_callout_target<T: CalloutTarget>(
 
 #[derive(SystemSet, Hash, PartialEq, Eq, Clone, Debug)]
 pub struct CalloutUpdateSystems;
-
 
 #[derive(Component)]
 pub struct CalloutTargetCamera;
