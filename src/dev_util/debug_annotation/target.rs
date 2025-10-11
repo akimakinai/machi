@@ -1,32 +1,40 @@
-use bevy::{camera::primitives::Aabb, prelude::*};
+use bevy::{camera::primitives::Aabb, ecs::query::QueryData, prelude::*};
+
+use crate::dev_util::debug_annotation::DebugAnnotUiOf;
 
 pub(crate) struct TargetPlugin;
 
 impl Plugin for TargetPlugin {
     fn build(&self, app: &mut App) {
-        register_callout_target::<CalloutTargetAabb>(app);
+        register_annot_target::<AnnotTargetAabb>(app);
     }
 }
 
-pub fn register_callout_target<T: CalloutTarget>(app: &mut App) {
+pub fn register_annot_target<T: AnnotTarget>(app: &mut App) {
     app.add_systems(
-        Update,
-        update_callout_target::<T>.in_set(CalloutUpdateSystems),
+        PostUpdate,
+        update_annot_target::<T>.in_set(AnnotUpdateSystems),
     );
 }
 
-fn update_callout_target<T: CalloutTarget>(
-    mut query: Query<(&T, &T::Source, &mut CalloutTargetRect)>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<CalloutTargetCamera>>,
+fn update_annot_target<T: AnnotTarget>(
+    mut annot_ui: Query<(&DebugAnnotUiOf, &mut AnnotTargetRect)>,
+    source_query: Query<(&T, T::Source)>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<AnnotTargetCamera>>,
 ) -> Result<()> {
     let Ok(camera) = camera_query.single() else {
-        error_once!("No camera with CalloutTargetCamera found.");
+        error_once!("No camera with AnnotTargetCamera found.");
         return Ok(());
     };
 
-    for (target, source, mut rect) in &mut query {
-        if let Ok(new_rect) = target.callout_target(source, camera) {
-            rect.0 = new_rect;
+    for (&DebugAnnotUiOf(target_id), mut rect) in &mut annot_ui {
+        let Some((target, source)) = source_query.get(target_id).ok() else {
+            error!("Could not get source for annot target: {target_id:?}");
+            continue;
+        };
+
+        if let Ok(new_rect) = target.annot_target(source, camera) {
+            rect.0 = Some(new_rect);
         }
     }
 
@@ -34,50 +42,65 @@ fn update_callout_target<T: CalloutTarget>(
 }
 
 #[derive(SystemSet, Hash, PartialEq, Eq, Clone, Debug)]
-pub struct CalloutUpdateSystems;
+pub struct AnnotUpdateSystems;
 
-#[derive(Component)]
-pub struct CalloutTargetCamera;
+#[derive(Component, Clone, Copy)]
+pub struct AnnotTargetCamera;
 
-/// Make [`DebugCalloutUi`] target the AABB of the entity.
-#[derive(Component)]
-pub struct CalloutTargetAabb;
+/// Make [`DebugAnnotationUi`] target the AABB of the entity.
+#[derive(Component, Clone, Copy)]
+pub struct AnnotTargetAabb;
 
 /// Target rect in logical viewport coordinates.
-/// You can update this manually or add a [`CalloutTarget`] component to update it automatically.
-#[derive(Component, Clone)]
-pub struct CalloutTargetRect(pub Rect);
+/// You can update this manually or add a [`AnnotationTarget`] component to update it automatically.
+#[derive(Component, Clone, Copy, Default, Debug)]
+pub struct AnnotTargetRect(pub Option<Rect>);
 
 // #[cfg(or(feature = "avian3d", feature = "avian2d")))]
 // #[derive(Component)]
-// struct CalloutColliderAabb;
+// struct AnnotationColliderAabb;
 
-pub trait CalloutTarget: Component {
-    type Source: Component + 'static;
+pub trait AnnotTarget: Component {
+    type Source: QueryData + 'static;
 
     /// Returns the target rect in logical viewport coordinates.
-    fn callout_target(
+    fn annot_target(
         &self,
-        source: &Self::Source,
+        source: <<Self::Source as QueryData>::ReadOnly as QueryData>::Item<'_, '_>,
         camera: (&Camera, &GlobalTransform),
     ) -> Result<Rect>;
 }
 
-impl CalloutTarget for CalloutTargetAabb {
-    type Source = Aabb;
+impl AnnotTarget for AnnotTargetAabb {
+    type Source = (&'static Aabb, &'static GlobalTransform);
 
-    fn callout_target(
+    fn annot_target(
         &self,
-        source: &Self::Source,
+        (aabb, transform): (&Aabb, &GlobalTransform),
         camera: (&Camera, &GlobalTransform),
     ) -> Result<Rect> {
-        let min = camera
+        let center = camera
             .0
-            .world_to_viewport(camera.1, source.min().to_vec3())?;
-        let max = camera
-            .0
-            .world_to_viewport(camera.1, source.max().to_vec3())?;
+            .world_to_viewport(camera.1, transform.transform_point(aabb.center.to_vec3()))?;
 
-        Ok(Rect::from_corners(min, max))
+        let mut half_size = Vec2::ZERO;
+        for x in [-1.0, 1.0] {
+            for y in [-1.0, 1.0] {
+                for z in [-1.0, 1.0] {
+                    let corner = transform.transform_point(
+                        aabb.center.to_vec3()
+                            + Vec3::new(
+                                aabb.half_extents.x * x,
+                                aabb.half_extents.y * y,
+                                aabb.half_extents.z * z,
+                            ),
+                    );
+                    let viewport_pos = camera.0.world_to_viewport(camera.1, corner)?;
+                    half_size = half_size.max((viewport_pos - center).abs());
+                }
+            }
+        }
+
+        Ok(Rect::from_center_half_size(center, half_size))
     }
 }

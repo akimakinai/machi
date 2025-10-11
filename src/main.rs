@@ -14,7 +14,9 @@ use crate::{
         CharacterController, CharacterPlugin,
         player::{Player, PlayerCamera},
     },
-    dev_util::{DevUtilPlugin, log_window::LogWindowLayer},
+    dev_util::{
+        DevUtilPlugin, debug_annotation::target::AnnotTargetCamera, log_window::LogWindowLayer,
+    },
     explosion::ExplosionPlugin,
     inventory::{Inventory, ItemId, ItemStack},
     object::ObjectPlugin,
@@ -147,7 +149,13 @@ fn spawn_player(
             Player,
         ))
         .with_children(|c| {
-            c.spawn((Camera3d::default(), Hdr, Bloom::default(), PlayerCamera));
+            c.spawn((
+                Camera3d::default(),
+                Hdr,
+                Bloom::default(),
+                PlayerCamera,
+                AnnotTargetCamera,
+            ));
             let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
             slots[0] = ItemStack::new(ItemId(1), 64).unwrap().into();
             slots[1] = ItemStack::new(ItemId(2), 32).unwrap().into();

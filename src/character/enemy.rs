@@ -10,6 +10,7 @@ use crate::{
         },
         player::Player,
     },
+    dev_util::debug_annotation::{debug_annot_ui, target::AnnotTargetAabb},
     physics::GameLayer,
 };
 
@@ -54,6 +55,7 @@ fn spawn_enemy(
             [GameLayer::Character],
             [GameLayer::Terrain, GameLayer::Character],
         ),
+        AnnotTargetAabb,
     );
 
     for i in 0..3 {
@@ -74,6 +76,8 @@ fn spawn_enemy(
                 ],
             ));
         });
+
+        commands.spawn(debug_annot_ui(id));
     }
 }
 

@@ -1,34 +1,64 @@
-mod target;
+pub mod target;
 
-use bevy::prelude::*;
+use bevy::{prelude::*, ui::UiSystems};
 
-use target::CalloutTargetRect;
+use target::AnnotTargetRect;
 
-pub struct DebugCalloutPlugin;
+use crate::dev_util::debug_annotation::target::AnnotUpdateSystems;
 
-impl Plugin for DebugCalloutPlugin {
+pub struct DebugAnnotPlugin;
+
+impl Plugin for DebugAnnotPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(target::TargetPlugin);
+        app.add_plugins(target::TargetPlugin)
+            // all UI systems in PostUpdate will run after `Prepare`
+            .add_systems(
+                PostUpdate,
+                (update_annotation_ui, update_annot_info)
+                    .after(AnnotUpdateSystems)
+                    .before(UiSystems::Prepare),
+            )
+            .configure_sets(PostUpdate, AnnotUpdateSystems.before(UiSystems::Prepare));
     }
 }
 
-#[derive(Component)]
-#[relationship_target(relationship = DebugCalloutUiOf)]
-pub struct DebugCalloutUi(Entity);
+pub fn debug_annot_ui(target: Entity) -> impl Bundle {
+    (
+        DebugAnnotUiOf(target),
+        children![
+            DebugAnnotArea,
+            (DebugAnnotInfoBox, children![Text::default()])
+        ],
+    )
+}
 
 #[derive(Component)]
-#[relationship(relationship_target = DebugCalloutUi)]
-#[require(Node)]
-pub struct DebugCalloutUiOf(pub Entity);
+#[relationship_target(relationship = DebugAnnotUiOf)]
+pub struct AttachDebugAnnotUi(Entity);
 
 #[derive(Component)]
-#[require(Node)]
-struct DebugCalloutArea;
+#[relationship(relationship_target = AttachDebugAnnotUi)]
+#[require(Node {
+    flex_direction: FlexDirection::Column,
+    ..default()
+}, AnnotTargetRect)]
+pub struct DebugAnnotUiOf(pub Entity);
 
-fn update_callout_ui(
-    mut query: Query<(&DebugCalloutUi, &Children)>,
-    mut callout_area: Query<&mut Node, With<DebugCalloutArea>>,
-    target_query: Query<&CalloutTargetRect>,
+#[derive(Component)]
+#[require(
+    Node { border: UiRect::all(Val::Px(2.0)), ..default() },
+    BorderColor::from(Color::srgba(0.0, 0.0, 0.0, 0.8)),
+)]
+struct DebugAnnotArea;
+
+#[derive(Component)]
+#[require(Node, BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.3)))]
+struct DebugAnnotInfoBox;
+
+fn update_annotation_ui(
+    mut query: Query<(Entity, &AnnotTargetRect, &Children), With<DebugAnnotUiOf>>,
+    annotation_area: Query<(), With<DebugAnnotArea>>,
+    mut nodes: Query<&mut Node>,
     ui_camera: DefaultUiCamera,
     camera: Query<&Camera>,
 ) -> Result<()> {
@@ -44,25 +74,46 @@ fn update_callout_ui(
         .unwrap_or_default()
         .as_vec2();
 
-    for (callout_ui, children) in &mut query {
-        let Ok(&CalloutTargetRect(target_rect)) = target_query.get(callout_ui.0) else {
+    for (entity, target_rect, children) in &mut query {
+        let Some(target_rect) = target_rect.0 else {
             continue;
         };
 
         for child in children.iter() {
-            if let Ok(mut node) = callout_area.get_mut(child) {
+            if annotation_area.contains(child) {
                 let viewport_pos = Rect {
                     min: target_rect.min - ui_camera_viewport_pos,
                     max: target_rect.max - ui_camera_viewport_pos,
                 };
 
-                node.left = Val::Px(viewport_pos.min.x);
-                node.top = Val::Px(viewport_pos.min.y);
+                let mut node = nodes.get_mut(child)?;
                 node.width = Val::Px(viewport_pos.width());
                 node.height = Val::Px(viewport_pos.height());
+
+                let mut node = nodes.get_mut(entity)?;
+                node.left = Val::Px(viewport_pos.min.x);
+                node.top = Val::Px(viewport_pos.min.y);
             }
         }
     }
 
     Ok(())
+}
+
+fn update_annot_info(
+    annot_ui: Query<(&DebugAnnotUiOf, &Children)>,
+    info_boxes: Query<&Children, With<DebugAnnotInfoBox>>,
+    mut texts: Query<&mut Text>,
+) {
+    for (&DebugAnnotUiOf(target_id), children) in &annot_ui {
+        for child in children.iter() {
+            if let Ok(info_children) = info_boxes.get(child) {
+                for info_child in info_children.iter() {
+                    if let Ok(mut text) = texts.get_mut(info_child) {
+                        text.0 = format!("Entity: {target_id:?}");
+                    }
+                }
+            }
+        }
+    }
 }

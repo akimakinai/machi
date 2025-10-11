@@ -9,7 +9,7 @@ impl Plugin for DevUtilPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_plugins((
             log_window::LogWindowPlugin,
-            debug_annotation::DebugCalloutPlugin,
+            debug_annotation::DebugAnnotPlugin,
         ));
     }
 }
