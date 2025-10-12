@@ -24,7 +24,7 @@ impl Plugin for DebugAnnotPlugin {
 
 pub fn debug_annot_ui(target: Entity) -> impl Bundle {
     (
-        DebugAnnotUiOf(target),
+        DebugAnnotUi(target),
         children![
             DebugAnnotArea,
             (DebugAnnotInfoBox, children![Text::default()])
@@ -33,7 +33,7 @@ pub fn debug_annot_ui(target: Entity) -> impl Bundle {
 }
 
 #[derive(Component)]
-#[relationship_target(relationship = DebugAnnotUiOf)]
+#[relationship_target(relationship = DebugAnnotUi)]
 pub struct AttachDebugAnnotUi(Entity);
 
 #[derive(Component)]
@@ -42,7 +42,10 @@ pub struct AttachDebugAnnotUi(Entity);
     flex_direction: FlexDirection::Column,
     ..default()
 }, AnnotTargetRect)]
-pub struct DebugAnnotUiOf(pub Entity);
+pub struct DebugAnnotUi(
+    /// The entity this UI is annotating.
+    pub Entity,
+);
 
 #[derive(Component)]
 #[require(
@@ -56,7 +59,7 @@ struct DebugAnnotArea;
 struct DebugAnnotInfoBox;
 
 fn update_annotation_ui(
-    mut query: Query<(Entity, &AnnotTargetRect, &Children), With<DebugAnnotUiOf>>,
+    mut query: Query<(Entity, &AnnotTargetRect, &Children, &Visibility), With<DebugAnnotUi>>,
     annotation_area: Query<(), With<DebugAnnotArea>>,
     mut nodes: Query<&mut Node>,
     ui_camera: DefaultUiCamera,
@@ -74,7 +77,16 @@ fn update_annotation_ui(
         .unwrap_or_default()
         .as_vec2();
 
-    for (entity, target_rect, children) in &mut query {
+    for (entity, target_rect, children, vis) in &mut query {
+        if vis == Visibility::Hidden {
+            continue;
+        }
+        if let Ok(node) = nodes.get(entity)
+            && node.display == Display::None
+        {
+            continue;
+        }
+
         let Some(target_rect) = target_rect.0 else {
             continue;
         };
@@ -101,11 +113,11 @@ fn update_annotation_ui(
 }
 
 fn update_annot_info(
-    annot_ui: Query<(&DebugAnnotUiOf, &Children)>,
+    annot_ui: Query<(&DebugAnnotUi, &Children)>,
     info_boxes: Query<&Children, With<DebugAnnotInfoBox>>,
     mut texts: Query<&mut Text>,
 ) {
-    for (&DebugAnnotUiOf(target_id), children) in &annot_ui {
+    for (&DebugAnnotUi(target_id), children) in &annot_ui {
         for child in children.iter() {
             if let Ok(info_children) = info_boxes.get(child) {
                 for info_child in info_children.iter() {

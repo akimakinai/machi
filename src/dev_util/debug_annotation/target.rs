@@ -1,6 +1,6 @@
 use bevy::{camera::primitives::Aabb, ecs::query::QueryData, prelude::*};
 
-use crate::dev_util::debug_annotation::DebugAnnotUiOf;
+use crate::dev_util::debug_annotation::DebugAnnotUi;
 
 pub(crate) struct TargetPlugin;
 
@@ -18,7 +18,7 @@ pub fn register_annot_target<T: AnnotTarget>(app: &mut App) {
 }
 
 fn update_annot_target<T: AnnotTarget>(
-    mut annot_ui: Query<(&DebugAnnotUiOf, &mut AnnotTargetRect)>,
+    mut annot_ui: Query<(&DebugAnnotUi, &mut AnnotTargetRect, &Visibility, &Node)>,
     source_query: Query<(&T, T::Source)>,
     camera_query: Query<(&Camera, &GlobalTransform), With<AnnotTargetCamera>>,
 ) -> Result<()> {
@@ -27,7 +27,11 @@ fn update_annot_target<T: AnnotTarget>(
         return Ok(());
     };
 
-    for (&DebugAnnotUiOf(target_id), mut rect) in &mut annot_ui {
+    for (&DebugAnnotUi(target_id), mut rect, vis, node) in &mut annot_ui {
+        if vis == Visibility::Hidden || node.display == Display::None {
+            continue;
+        }
+
         let Some((target, source)) = source_query.get(target_id).ok() else {
             error!("Could not get source for annot target: {target_id:?}");
             continue;
