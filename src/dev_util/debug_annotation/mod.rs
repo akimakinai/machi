@@ -33,7 +33,7 @@ pub fn debug_annot_ui(target: Entity) -> impl Bundle {
 }
 
 #[derive(Component)]
-#[relationship_target(relationship = DebugAnnotUi)]
+#[relationship_target(relationship = DebugAnnotUi, linked_spawn)]
 pub struct AttachDebugAnnotUi(Entity);
 
 #[derive(Component)]
