@@ -68,21 +68,39 @@ fn update_ground_shape_caster(
     controllers: Query<(Entity, Ref<RigidBodyColliders>), With<CharacterController>>,
     mut commands: Commands,
     colliders: Query<&Collider>,
+    transforms: Query<(&Transform, Option<&ChildOf>)>,
 ) -> Result<()> {
-    for (id, rb_colliders) in &controllers {
+    for (controller_id, rb_colliders) in &controllers {
         if !rb_colliders.is_changed() {
             return Ok(());
         }
 
-        let mut caster_shape = colliders
-            .get(*rb_colliders.collection().first().unwrap())?
-            .clone();
+        let &collider_id = rb_colliders
+            .collection()
+            .first()
+            .ok_or_else(|| BevyError::from("CharacterController has no colliders attached"))?;
+
+        let mut collider_transform = Transform::default();
+        let mut cur_id = collider_id;
+        while let Ok((t, parent)) = transforms.get(cur_id) {
+            collider_transform = *t * collider_transform;
+            if let Some(&ChildOf(parent)) = parent
+                && parent != controller_id
+            {
+                cur_id = parent;
+            } else {
+                break;
+            }
+        }
+
+        let mut caster_shape = colliders.get(collider_id)?.clone();
         // Create shape caster as a slightly smaller version of collider
         caster_shape.set_scale(Vec3::ONE * 0.99, 10);
-        commands.entity(id).insert(
+        commands.entity(controller_id).insert((
             ShapeCaster::new(caster_shape, Vec3::ZERO, Quat::default(), Dir3::NEG_Y)
                 .with_max_distance(0.2),
-        );
+            collider_transform,
+        ));
     }
 
     Ok(())
