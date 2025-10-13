@@ -19,14 +19,14 @@ impl Plugin for CharacterPlugin {
         app.add_plugins(player::PlayerPlugin)
             .add_plugins(enemy::EnemyPlugin)
             .add_plugins(ai::AiPlugin)
-            .add_observer(add_ground_shape_caster)
             .add_observer(movement)
             .add_systems(
                 Update,
                 (update_grounded, apply_movement_damping)
                     .chain()
                     .in_set(PausableSystems),
-            );
+            )
+            .add_systems(Update, update_ground_shape_caster);
     }
 }
 
@@ -64,19 +64,28 @@ impl Default for CharacterController {
     }
 }
 
-fn add_ground_shape_caster(
-    on: On<Add, CharacterController>,
+fn update_ground_shape_caster(
+    controllers: Query<(Entity, Ref<RigidBodyColliders>), With<CharacterController>>,
     mut commands: Commands,
     colliders: Query<&Collider>,
-) {
-    let collider = colliders.get(on.entity).unwrap();
-    let mut caster_shape = collider.clone();
-    // Create shape caster as a slightly smaller version of collider
-    caster_shape.set_scale(Vec3::ONE * 0.99, 10);
-    commands.entity(on.entity).insert(
-        ShapeCaster::new(caster_shape, Vec3::ZERO, Quat::default(), Dir3::NEG_Y)
-            .with_max_distance(0.2),
-    );
+) -> Result<()> {
+    for (id, rb_colliders) in &controllers {
+        if !rb_colliders.is_changed() {
+            return Ok(());
+        }
+
+        let mut caster_shape = colliders
+            .get(*rb_colliders.collection().first().unwrap())?
+            .clone();
+        // Create shape caster as a slightly smaller version of collider
+        caster_shape.set_scale(Vec3::ONE * 0.99, 10);
+        commands.entity(id).insert(
+            ShapeCaster::new(caster_shape, Vec3::ZERO, Quat::default(), Dir3::NEG_Y)
+                .with_max_distance(0.2),
+        );
+    }
+
+    Ok(())
 }
 
 /// A marker component indicating that an entity is on the ground.

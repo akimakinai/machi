@@ -7,6 +7,7 @@ use bevy::{
     render::view::Hdr,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
+use bevy_skein::SkeinPlugin;
 use tracing_subscriber::Layer;
 
 use crate::{
@@ -51,6 +52,7 @@ fn main() {
             custom_layer: |_app| Some(LogWindowLayer.boxed()),
             ..default()
         }))
+        .add_plugins(SkeinPlugin::default())
         .add_plugins((PhysicsPlugins::default(), PhysicsDebugPlugin::default()))
         .add_plugins(PausePlugin)
         .add_plugins(ChunkPlugin)

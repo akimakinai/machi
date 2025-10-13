@@ -1,5 +1,5 @@
 use avian3d::prelude::*;
-use bevy::{color::palettes::tailwind::FUCHSIA_400, prelude::*};
+use bevy::prelude::*;
 
 use crate::{
     character::{
@@ -32,20 +32,13 @@ pub struct Enemy;
 
 fn spawn_enemy(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
-    let shape = Sphere::new(0.5);
-    let collider = shape.collider();
-
     let enemy_base = (
         Name::new("Enemy"),
         Enemy,
-        Mesh3d(meshes.add(shape.mesh().ico(32).unwrap())),
-        MeshMaterial3d(materials.add(StandardMaterial::from(Color::from(FUCHSIA_400)))),
         Mass(2.0),
         Friction::new(0.5),
-        collider,
         RigidBody::Dynamic,
         CharacterController {
             movement_acceleration: 50.0,
@@ -56,6 +49,7 @@ fn spawn_enemy(
             [GameLayer::Terrain, GameLayer::Character],
         ),
         AnnotTargetAabb,
+        SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("models/Enemy.glb"))),
     );
 
     for i in 0..3 {
