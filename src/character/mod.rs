@@ -45,7 +45,7 @@ pub enum MovementEventKind {
 
 /// A marker component indicating that an entity is using a character controller.
 #[derive(Component, Clone)]
-#[require(RigidBody, Collider, LockedAxes::ROTATION_LOCKED, Grounded)]
+#[require(RigidBody, LockedAxes::ROTATION_LOCKED, Grounded)]
 pub struct CharacterController {
     pub movement_acceleration: f32,
     pub movement_damping_factor: f32,
