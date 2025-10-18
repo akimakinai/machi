@@ -408,3 +408,133 @@ fn remove_active_node(world: &mut World, entity: Entity) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run_behavior_tree(world: &mut World) {
+        world
+            .run_system_cached::<Result<()>, _, _>(update_behavior_trees)
+            .unwrap()
+            .unwrap();
+    }
+
+    #[test]
+    fn ai_target_gets_target_from_root_chain() {
+        let mut world = World::new();
+
+        let target = world.spawn_empty().id();
+        let root = world.spawn(BehaviorTreeRoot::new(target)).id();
+        let child = world.spawn(ChildOf(root)).id();
+        let grandchild = world.spawn(ChildOf(child)).id();
+
+        let mut state: SystemState<AiTarget> = SystemState::new(&mut world);
+        let ai_target = state.get(&world);
+
+        assert_eq!(ai_target.get_target(root).unwrap(), target);
+        assert_eq!(ai_target.get_target(child).unwrap(), target);
+        assert_eq!(ai_target.get_target(grandchild).unwrap(), target);
+    }
+
+    #[test]
+    fn sequence_node_queues_children_in_order() {
+        let mut world = World::new();
+
+        let node = world
+            .spawn((
+                SequenceNode { repeat: false },
+                SequenceState::default(),
+                ControlNodeSystem::new(update_sequence),
+                ActiveNode,
+            ))
+            .id();
+
+        let first_child = world.spawn((LeafNodeResult::Idle, ChildOf(node))).id();
+        let second_child = world.spawn((LeafNodeResult::Idle, ChildOf(node))).id();
+
+        run_behavior_tree(&mut world);
+        assert!(world.entity(first_child).contains::<ActiveNode>());
+        assert!(!world.entity(second_child).contains::<ActiveNode>());
+
+        world
+            .get_mut::<LeafNodeResult>(first_child)
+            .unwrap()
+            .set_complete();
+
+        run_behavior_tree(&mut world);
+        assert!(!world.entity(first_child).contains::<ActiveNode>());
+        assert!(world.entity(second_child).contains::<ActiveNode>());
+
+        world
+            .get_mut::<LeafNodeResult>(second_child)
+            .unwrap()
+            .set_complete();
+
+        run_behavior_tree(&mut world);
+        assert!(!world.entity(node).contains::<ActiveNode>());
+        assert!(!world.entity(first_child).contains::<ActiveNode>());
+        assert!(!world.entity(second_child).contains::<ActiveNode>());
+    }
+
+    #[test]
+    fn time_limit_node_completes_when_child_finishes() {
+        let mut world = World::new();
+        world.insert_resource(Time::<()>::default());
+
+        let node = world
+            .spawn((
+                TimeLimitNode::from_seconds(1.0),
+                TimeLimitState::default(),
+                ControlNodeSystem::new(update_time_limit),
+                ActiveNode,
+            ))
+            .id();
+        let child = world.spawn((LeafNodeResult::Idle, ChildOf(node))).id();
+
+        run_behavior_tree(&mut world);
+        assert!(world.entity(child).contains::<ActiveNode>());
+
+        world
+            .get_mut::<LeafNodeResult>(child)
+            .unwrap()
+            .set_complete();
+
+        run_behavior_tree(&mut world);
+        assert!(!world.entity(node).contains::<ActiveNode>());
+        assert!(!world.entity(child).contains::<ActiveNode>());
+    }
+
+    #[test]
+    fn time_limit_node_completes_when_duration_expires() {
+        let mut world = World::new();
+        world.insert_resource(Time::<()>::default());
+
+        let node = world
+            .spawn((
+                TimeLimitNode::from_seconds(1.0),
+                TimeLimitState::default(),
+                ControlNodeSystem::new(update_time_limit),
+                ActiveNode,
+            ))
+            .id();
+        let child = world.spawn((LeafNodeResult::Idle, ChildOf(node))).id();
+
+        run_behavior_tree(&mut world);
+        assert!(world.entity(child).contains::<ActiveNode>());
+
+        world
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_secs_f32(0.5));
+        run_behavior_tree(&mut world);
+        assert!(world.entity(node).contains::<ActiveNode>());
+        assert!(world.entity(child).contains::<ActiveNode>());
+
+        world
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_secs_f32(0.6));
+        run_behavior_tree(&mut world);
+        assert!(!world.entity(node).contains::<ActiveNode>());
+        assert!(!world.entity(child).contains::<ActiveNode>());
+    }
+}
