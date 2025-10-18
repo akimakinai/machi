@@ -137,16 +137,17 @@ pub fn build_inventory_root(
                                 Name::new("Count"),
                                 Node {
                                     position_type: PositionType::Absolute,
-                                    right: Val::Px(4.0),
-                                    bottom: Val::Px(4.0),
+                                    right: Val::Px(2.0),
+                                    bottom: Val::Px(2.0),
                                     ..default()
                                 },
                                 Text::new(String::new()),
                                 TextColor(Color::BLACK),
-                                TextShadow {
-                                    offset: Vec2::splat(2.),
-                                    color: Color::srgba(0., 0., 0., 0.75),
+                                TextFont {
+                                    font_size: 12.0,
+                                    ..default()
                                 },
+                                TextBackgroundColor(Color::WHITE),
                             ));
                         });
                     }

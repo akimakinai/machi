@@ -29,7 +29,7 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
             map_uv = mapping_uv(vec2(x_bound, line1(x_bound)), vec2(0.5, line2(0.5)), vec2(x_bound, line3(x_bound)), in.uv);
         } else {
             // right
-            map_uv = mapping_uv(vec2(0.5, 0.0), vec2(1.0 - x_bound, line1(x_bound)), vec2(0.5, 1.0), in.uv);
+            map_uv = mapping_uv(vec2(0.5, 0.0), vec2(1.0 - x_bound, line2(x_bound)), vec2(0.5, 1.0), in.uv);
         }
     } else {
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
@@ -63,11 +63,11 @@ fn line3(x: f32) -> f32 {
 }
 
 fn mapping_uv(top_left: vec2<f32>, top_right: vec2<f32>, bottom_left: vec2<f32>, pos: vec2<f32>) -> vec2<f32> {
-    let u = reverse_mix(top_left, top_right, pos);
-    let v = reverse_mix(bottom_left, top_left, pos);
-    return vec2<f32>(u, v);
-}
+    let a = top_right - top_left;
+    let b = bottom_left - top_left;
+    let c = pos - top_left;
 
-fn reverse_mix(a: vec2<f32>, b: vec2<f32>, x: vec2<f32>) -> f32 {
-    return clamp(dot(x - a, b - a) / length(b - a), 0.0, 1.0);
+    let u = dot(c, a) / length(a);
+    let v = dot(c, b) / length(b);
+    return vec2<f32>(u, v);
 }
