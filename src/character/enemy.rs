@@ -30,10 +30,7 @@ impl Plugin for EnemyPlugin {
 #[require(Transform, Visibility)]
 pub struct Enemy;
 
-fn spawn_enemy(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-) {
+fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
     let enemy_base = (
         Name::new("Enemy"),
         Enemy,
