@@ -11,7 +11,7 @@ use bevy::{
     prelude::*,
 };
 
-use crate::{PlayerCamera, inventory::ItemId};
+use crate::{PlayerCamera, item::ItemId};
 
 pub struct ChunkPlugin;
 

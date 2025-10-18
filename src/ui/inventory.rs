@@ -1,10 +1,6 @@
-use bevy::{
-    asset::RenderAssetUsages,
-    prelude::*,
-    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
-};
+use bevy::prelude::*;
 
-use crate::{inventory::Inventory, ui::block_icon::BlockIconMaterial};
+use crate::{inventory::Inventory, ui::item_icon::ItemIconNode};
 
 pub struct InventoryUiPlugin;
 
@@ -57,10 +53,8 @@ pub fn build_inventory_root(
     In(inventory): In<Entity>,
     mut commands: Commands,
     inventories: Query<(NameOrEntity, &Inventory)>,
-    mut block_icon_mats: ResMut<Assets<BlockIconMaterial>>,
-    mut images: ResMut<Assets<Image>>,
 ) {
-    let uv_debug_image = images.add(uv_debug_texture());
+    // let uv_debug_image = images.add(uv_debug_texture());
 
     let slot_size = 60.0;
     let slot_gap = 8.0;
@@ -127,9 +121,7 @@ pub fn build_inventory_root(
                         ));
                         slot.with_children(|slot| {
                             slot.spawn((
-                                MaterialNode(block_icon_mats.add(BlockIconMaterial {
-                                    icon: uv_debug_image.clone(),
-                                })),
+                                ItemIconNode(data.slots[i].as_ref().map(|is| is.item_id)),
                                 Node {
                                     position_type: PositionType::Absolute,
                                     top: Val::Px(0.0),
@@ -194,8 +186,10 @@ fn update_inventory_slots(
     slots: Query<&InventoryUiSlot>,
     inventories: Query<Ref<Inventory>>,
     children: Query<&Children>,
+    item_icon: Query<&ItemIconNode>,
     mut texts: Query<&mut Text>,
     mut block_icons: Query<&mut Visibility, With<SlotBlockIcon>>,
+    mut commands: Commands,
 ) -> Result<()> {
     for (root_id, root) in &roots {
         let inventory = inventories.get(root.inventory)?;
@@ -208,15 +202,18 @@ fn update_inventory_slots(
                 continue;
             };
 
-            let num = inventory.slots[slot.0]
-                .as_ref()
-                .map(|s| s.quantity().to_string())
-                .unwrap_or_default();
-
             for schild in children.get(child)?.iter() {
+                if let Ok(item_icon) = item_icon.get(schild) {
+                    let maybe_item_id = inventory.slots[slot.0].as_ref().map(|is| is.item_id);
+                    if item_icon.0 != maybe_item_id {
+                        commands.entity(schild).insert(ItemIconNode(maybe_item_id));
+                    }
+                }
                 if let Ok(mut text) = texts.get_mut(schild) {
-                    text.0 = num;
-                    break;
+                    text.0 = inventory.slots[slot.0]
+                        .as_ref()
+                        .map(|s| s.quantity().to_string())
+                        .unwrap_or_default();
                 }
             }
             for schild in children.get(child)?.iter() {
@@ -233,33 +230,4 @@ fn update_inventory_slots(
     }
 
     Ok(())
-}
-
-// Taken from https://bevy.org/examples-webgpu/3d-rendering/3d-shapes/
-fn uv_debug_texture() -> Image {
-    const TEXTURE_SIZE: usize = 8;
-
-    let mut palette: [u8; 32] = [
-        255, 102, 159, 255, 255, 159, 102, 255, 236, 255, 102, 255, 121, 255, 102, 255, 102, 255,
-        198, 255, 102, 198, 255, 255, 121, 102, 255, 255, 236, 102, 255, 255,
-    ];
-
-    let mut texture_data = [0; TEXTURE_SIZE * TEXTURE_SIZE * 4];
-    for y in 0..TEXTURE_SIZE {
-        let offset = TEXTURE_SIZE * y * 4;
-        texture_data[offset..(offset + TEXTURE_SIZE * 4)].copy_from_slice(&palette);
-        palette.rotate_right(4);
-    }
-
-    Image::new_fill(
-        Extent3d {
-            width: TEXTURE_SIZE as u32,
-            height: TEXTURE_SIZE as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        &texture_data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
-    )
 }

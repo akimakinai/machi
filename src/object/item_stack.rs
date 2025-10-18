@@ -7,7 +7,8 @@ use bevy::{
 
 use crate::{
     character::player::Player,
-    inventory::{Inventory, ItemId, ItemStack},
+    inventory::Inventory,
+    item::{ItemId, ItemStack},
     physics::GameLayer,
 };
 

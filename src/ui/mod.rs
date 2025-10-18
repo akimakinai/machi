@@ -1,12 +1,17 @@
 use bevy::prelude::*;
 
-pub mod block_icon;
+pub mod hotbar;
 pub mod inventory;
+pub mod item_icon;
 
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((inventory::InventoryUiPlugin, block_icon::BlockIconPlugin));
+        app.add_plugins((
+            inventory::InventoryUiPlugin,
+            item_icon::plugin,
+            hotbar::HotbarPlugin,
+        ));
     }
 }

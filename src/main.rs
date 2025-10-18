@@ -19,7 +19,8 @@ use crate::{
         DevUtilPlugin, debug_annotation::target::AnnotTargetCamera, log_window::LogWindowLayer,
     },
     explosion::ExplosionPlugin,
-    inventory::{Inventory, ItemId, ItemStack},
+    inventory::Inventory,
+    item::{ItemId, ItemPlugin, ItemStack},
     object::ObjectPlugin,
     pause::{Pause, PausePlugin},
     physics::GameLayer,
@@ -36,6 +37,7 @@ mod dev_util;
 mod explosion;
 mod helper;
 mod inventory;
+mod item;
 mod object;
 mod pause;
 mod physics;
@@ -53,12 +55,13 @@ fn main() {
             ..default()
         }))
         .add_plugins(SkeinPlugin::default())
-        .add_plugins((PhysicsPlugins::default(), PhysicsDebugPlugin::default()))
+        .add_plugins((PhysicsPlugins::default(), PhysicsDebugPlugin))
         .add_plugins(PausePlugin)
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(EditPlugin)
         .add_plugins(CharacterPlugin)
+        .add_plugins(ItemPlugin)
         .add_plugins(ObjectPlugin)
         .add_plugins(ExplosionPlugin)
         .add_plugins(UiPlugin)
@@ -161,6 +164,7 @@ fn spawn_player(
             let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
             slots[0] = ItemStack::new(ItemId(1), 64).unwrap().into();
             slots[1] = ItemStack::new(ItemId(2), 32).unwrap().into();
+            slots[2] = ItemStack::new(ItemId(256), 16).unwrap().into();
             inventory_id = c
                 .spawn((Name::new("Player Inventory Data"), Inventory { slots }))
                 .id()

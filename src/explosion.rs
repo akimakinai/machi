@@ -1,8 +1,6 @@
 use bevy::prelude::*;
 
-use crate::{
-    inventory::ItemStack, object::item_stack::spawn_item_stack, terrain::chunk::WriteBlocks,
-};
+use crate::{item::ItemStack, object::item_stack::spawn_item_stack, terrain::chunk::WriteBlocks};
 
 pub struct ExplosionPlugin;
 

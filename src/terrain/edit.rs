@@ -2,7 +2,7 @@ use avian3d::prelude::LinearVelocity;
 use bevy::{prelude::*, window::PrimaryWindow};
 
 use crate::{
-    inventory::ItemStack,
+    item::ItemStack,
     object::item_stack::{ItemStackObjAssets, item_stack_bundle},
     pause::Pause,
     terrain::chunk::BlockId,
