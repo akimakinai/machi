@@ -202,13 +202,13 @@ fn update_behavior_trees(
                 .0 = Some(system);
             match action_result {
                 NodeResult::QueueNode(new_node) => {
-                    if world.get::<ControlNodeSystem>(new_node).is_some() {
-                        leaf_nodes.push(new_node);
-                        node_parents.insert(new_node, node);
-                        debug!("Queued {new_node}");
-                    }
+                    ensure_active_node(world, new_node);
+                    leaf_nodes.push(new_node);
+                    node_parents.insert(new_node, node);
+                    debug!("Queued {new_node}");
                 }
                 NodeResult::Complete => {
+                    deactivate_subtree(world, node);
                     if let Some(&parent) = node_parents.get(&node) {
                         debug!("Node {node} completed, activating parent {parent}");
                         leaf_nodes.push(parent);
@@ -219,12 +219,28 @@ fn update_behavior_trees(
                 _ => {}
             }
         } else {
-            // leaf node is active
-            if let Some(&parent) = node_parents.get(&node) {
+            let leaf_result = world.get::<LeafNodeResult>(node).copied();
+            if let Some(result) = leaf_result {
+                if result == LeafNodeResult::Complete {
+                    deactivate_subtree(world, node);
+                    if let Some(&parent) = node_parents.get(&node) {
+                        leaf_nodes.push(parent);
+                    } else {
+                        debug!("Behavior tree {node} completed");
+                    }
+                } else if let Some(&parent) = node_parents.get(&node) {
+                    leaf_nodes.push(parent);
+                } else {
+                    error!(
+                        "Non-control node is on root of behavior tree: {}",
+                        world.debug_entity(node)?
+                    );
+                }
+            } else if let Some(&parent) = node_parents.get(&node) {
                 leaf_nodes.push(parent);
             } else {
                 error!(
-                    "Non-control node is on root of behavior tree: {}",
+                    "Active node without control system or leaf result: {}",
                     world.debug_entity(node)?
                 );
             }
@@ -237,6 +253,24 @@ fn update_behavior_trees(
 fn reset_leaf_results(mut query: Query<&mut LeafNodeResult, With<ActiveNode>>) {
     for mut result in &mut query {
         result.reset();
+    }
+}
+
+fn ensure_active_node(world: &mut World, entity: Entity) {
+    if world.get::<ActiveNode>(entity).is_none() {
+        world.entity_mut(entity).insert(ActiveNode);
+    }
+}
+
+fn deactivate_subtree(world: &mut World, entity: Entity) {
+    if world.get::<ActiveNode>(entity).is_some() {
+        world.entity_mut(entity).remove::<ActiveNode>();
+    }
+    if let Some(children) = world.get::<Children>(entity) {
+        let children = children.to_vec();
+        for child in children {
+            deactivate_subtree(world, child);
+        }
     }
 }
 
@@ -284,7 +318,6 @@ fn update_sequence(
 
         if let Some(&res) = world.get::<LeafNodeResult>(current_entity) {
             if res == LeafNodeResult::Complete {
-                world.entity_mut(current_entity).remove::<ActiveNode>();
                 debug!("{current} completed");
             } else {
                 return Ok(NodeResult::Continue);
@@ -304,18 +337,15 @@ fn update_sequence(
     debug!("Current = {current}");
 
     if let Some(&cur_child) = children.get(current) {
-        world.entity_mut(cur_child).insert(ActiveNode);
         Ok(NodeResult::QueueNode(cur_child))
     } else if config.repeat && current != 0 && !children.is_empty() {
         // Queue child 0 if configured to `repeat`, and `current` ran off indices
         debug!("Repeat");
         state.current = Some(0);
         let child = children[0];
-        world.entity_mut(child).insert(ActiveNode);
         Ok(NodeResult::QueueNode(child))
     } else {
         state.current = None;
-        world.entity_mut(entity).remove::<ActiveNode>();
         Ok(NodeResult::Complete)
     }
 }
@@ -372,7 +402,6 @@ fn update_time_limit(
     if timer_finished {
         state.timer = None;
         state.child_activated = false;
-        remove_active_node(world, entity);
         return Ok(NodeResult::Complete);
     }
 
@@ -383,30 +412,16 @@ fn update_time_limit(
         let (_, mut state, _) = node.get_mut(world, entity)?;
         state.timer = None;
         state.child_activated = false;
-        remove_active_node(world, entity);
         return Ok(NodeResult::Complete);
     }
 
     if !child_activated {
         let (_, mut state, _) = node.get_mut(world, entity)?;
         state.child_activated = true;
-        world.entity_mut(child).insert(ActiveNode);
         return Ok(NodeResult::QueueNode(child));
     }
 
     Ok(NodeResult::Continue)
-}
-
-fn remove_active_node(world: &mut World, entity: Entity) {
-    if world.get::<ActiveNode>(entity).is_some() {
-        world.entity_mut(entity).remove::<ActiveNode>();
-    }
-    if let Some(children) = world.get::<Children>(entity) {
-        let children = children.to_vec();
-        for child in children {
-            remove_active_node(world, child);
-        }
-    }
 }
 
 #[cfg(test)]
