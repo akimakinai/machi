@@ -29,7 +29,12 @@ impl Plugin for RenderPlugin {
             .add_systems(Startup, setup_terrain_texture)
             .add_systems(Update, create_array_texture)
             .add_systems(Update, generate_terrain_mesh)
-            .add_systems(Update, (spawn_generated_terrain_mesh, update_solid).chain())
+            .add_systems(
+                Update,
+                (spawn_generated_terrain_mesh, update_solid)
+                    .chain()
+                    .after(generate_terrain_mesh),
+            )
             .add_observer(chunk_unloaded);
     }
 }
