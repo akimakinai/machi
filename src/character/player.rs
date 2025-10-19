@@ -1,7 +1,7 @@
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 
 use crate::{
-    character::{MovementEvent, MovementEventKind},
+    character::controller::{MovementEvent, MovementEventKind},
     pause::PausableSystems,
 };
 

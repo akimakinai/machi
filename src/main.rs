@@ -17,7 +17,8 @@ use tracing_subscriber::Layer;
 
 use crate::{
     character::{
-        CharacterController, CharacterPlugin,
+        CharacterPlugin,
+        controller::CharacterController,
         player::{Player, PlayerCamera},
     },
     dev_util::{

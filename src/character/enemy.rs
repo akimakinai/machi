@@ -3,11 +3,11 @@ use bevy::prelude::*;
 
 use crate::{
     character::{
-        CharacterController, MovementEvent, MovementEventKind,
         ai::{
             ActiveNode, AiActionSystems, AiTarget, BehaviorTreeRoot, LeafNodeResult, SequenceNode,
             TimeLimitNode,
         },
+        controller::{CharacterController, MovementEvent, MovementEventKind},
         player::Player,
     },
     dev_util::{

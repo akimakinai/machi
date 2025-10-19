@@ -24,7 +24,6 @@ fn overwrite_alpha_on_scene_ready(
     children: Query<&Children>,
     mesh_materials: Query<&MeshMaterial3d<StandardMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut commands: Commands,
 ) {
     let scene_root = on.event().entity;
 
