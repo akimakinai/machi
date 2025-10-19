@@ -1,10 +1,15 @@
 use avian3d::prelude::*;
 use bevy::{
+    core_pipeline::Skybox,
+    dev_tools::fps_overlay::FpsOverlayPlugin,
     ecs::error::DefaultErrorHandler,
     log::{DEFAULT_FILTER, LogPlugin},
     post_process::bloom::Bloom,
     prelude::*,
-    render::view::Hdr,
+    render::{
+        render_resource::{TextureViewDescriptor, TextureViewDimension},
+        view::Hdr,
+    },
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_skein::SkeinPlugin;
@@ -16,7 +21,10 @@ use crate::{
         player::{Player, PlayerCamera},
     },
     dev_util::{
-        DevUtilPlugin, debug_annotation::target::AnnotTargetCamera, log_window::LogWindowLayer,
+        DevUtilPlugin,
+        asset::{AssetLoad, AssetLoadObserved, AssetLoadObserverPlugin},
+        debug_annotation::target::AnnotTargetCamera,
+        log_window::LogWindowLayer,
     },
     explosion::ExplosionPlugin,
     inventory::Inventory,
@@ -65,6 +73,8 @@ fn main() {
         .add_plugins(ExplosionPlugin)
         .add_plugins(UiPlugin)
         .add_plugins(DevUtilPlugin)
+        .add_plugins(FpsOverlayPlugin::default())
+        .add_plugins(AssetLoadObserverPlugin::<Image>::default())
         .configure_sets(
             FixedPostUpdate,
             PhysicsSystems::StepSimulation.run_if(in_state(Pause(false))),
@@ -98,8 +108,8 @@ fn startup(mut commands: Commands) {
 fn spawn_chunk(mut commands: Commands, mut updated: MessageWriter<ChunkUpdated>) {
     let mut ids = vec![];
 
-    for cx in -1..=1 {
-        for cz in -1..=1 {
+    for cx in -2..=2 {
+        for cz in -2..=2 {
             let mut chunk = Chunk::new(IVec2::new(cx, cz));
 
             for x in 0..16 {
@@ -131,7 +141,25 @@ fn spawn_player(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
+    let skybox_image = asset_server.load("textures/skybox.png");
+    commands
+        .spawn(AssetLoadObserved(skybox_image.clone()))
+        .observe(
+            |on: On<AssetLoad<Image>>, mut images: ResMut<Assets<Image>>| {
+                let image = images.get_mut(&on.handle).unwrap();
+                if image.texture_descriptor.array_layer_count() == 1 {
+                    image.reinterpret_stacked_2d_as_array(image.height() / image.width());
+                    image.texture_view_descriptor = Some(TextureViewDescriptor {
+                        dimension: Some(TextureViewDimension::Cube),
+                        ..default()
+                    });
+                    info!("Skybox image processed as cube texture");
+                }
+            },
+        );
+
     let shape = Capsule3d {
         radius: 0.5,
         half_length: 1.0,
@@ -159,6 +187,11 @@ fn spawn_player(
                 Bloom::default(),
                 PlayerCamera,
                 AnnotTargetCamera,
+                Skybox {
+                    image: skybox_image,
+                    brightness: 1000.0,
+                    ..default()
+                },
             ));
             let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
             slots[0] = ItemStack::new(ItemId(1), 64).unwrap().into();
