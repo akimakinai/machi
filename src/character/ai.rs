@@ -9,7 +9,7 @@ use bevy::{
     prelude::*,
 };
 
-use crate::{helper::WorldExt as _, pause::PausableSystems};
+use crate::{dev_util::debug_entity::WorldExt as _, pause::PausableSystems};
 
 pub struct AiPlugin;
 

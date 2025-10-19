@@ -2,6 +2,7 @@
 use bevy::prelude::*;
 
 pub mod debug_annotation;
+pub mod debug_entity;
 pub mod log_window;
 
 pub struct DevUtilPlugin;

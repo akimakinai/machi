@@ -35,7 +35,6 @@ use crate::{
 mod character;
 mod dev_util;
 mod explosion;
-mod helper;
 mod inventory;
 mod item;
 mod object;
