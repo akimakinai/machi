@@ -5,6 +5,7 @@ pub mod asset;
 pub mod debug_annotation;
 pub mod debug_entity;
 pub mod log_window;
+pub mod mesh_alpha;
 
 pub struct DevUtilPlugin;
 

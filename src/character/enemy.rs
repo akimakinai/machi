@@ -10,7 +10,10 @@ use crate::{
         },
         player::Player,
     },
-    dev_util::debug_annotation::{debug_annot_ui, target::AnnotTargetAabb},
+    dev_util::{
+        debug_annotation::{debug_annot_ui, target::AnnotTargetAabb},
+        mesh_alpha::OverwriteAlpha,
+    },
     physics::GameLayer,
 };
 
@@ -47,6 +50,7 @@ fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
         ),
         AnnotTargetAabb,
         SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("models/Enemy.glb"))),
+        OverwriteAlpha(0.8),
     );
 
     for i in 0..3 {
