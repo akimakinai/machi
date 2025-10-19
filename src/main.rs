@@ -166,8 +166,7 @@ fn spawn_player(
         half_length: 1.0,
     };
     let collider = shape.collider();
-    let mut inventory_id = None;
-    commands
+    let player_id = commands
         .spawn((
             Name::new("Player"),
             Mesh3d(meshes.add(Mesh::from(shape))),
@@ -194,17 +193,27 @@ fn spawn_player(
                     ..default()
                 },
             ));
-            let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
-            slots[0] = ItemStack::new(ItemId(1), 64).unwrap().into();
-            slots[1] = ItemStack::new(ItemId(2), 32).unwrap().into();
-            slots[2] = ItemStack::new(ItemId(256), 16).unwrap().into();
-            inventory_id = c
-                .spawn((Name::new("Player Inventory Data"), Inventory { slots }))
-                .id()
-                .into();
-        });
+        })
+        .id();
 
-    commands.run_system_cached_with(ui::inventory::build_inventory_root, inventory_id.unwrap());
+    let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
+    slots[0] = ItemStack::new(ItemId(1), 64).unwrap().into();
+    slots[1] = ItemStack::new(ItemId(2), 32).unwrap().into();
+    slots[2] = ItemStack::new(ItemId(256), 16).unwrap().into();
+    let inventory_id = commands
+        .spawn((
+            Name::new("Player Inventory Data"),
+            Inventory {
+                slots,
+                hotbar: Some(9),
+            },
+            ChildOf(player_id),
+        ))
+        .id();
+
+    commands.run_system_cached_with(ui::inventory::build_inventory_root, inventory_id);
+
+    commands.run_system_cached_with(ui::hotbar::build_hotbar, inventory_id);
 }
 
 fn mouse_grabbing(

@@ -29,9 +29,6 @@ pub struct InventoryUiRoot {
     #[expect(dead_code)]
     pub chest_inventory: Option<Entity>,
     pub inventory: Entity,
-    /// Treats the last N slots in `inventory` as hotbar slots
-    #[expect(dead_code)]
-    pub hotbar: Option<u32>,
 }
 
 #[derive(Component)]
@@ -69,7 +66,6 @@ pub fn build_inventory_root(
             InventoryUiRoot {
                 chest_inventory: None,
                 inventory,
-                hotbar: None,
             },
             Node {
                 display: Display::None,

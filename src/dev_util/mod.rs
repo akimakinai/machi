@@ -12,7 +12,7 @@ pub struct DevUtilPlugin;
 impl Plugin for DevUtilPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_plugins((
-            log_window::LogWindowPlugin,
+            // log_window::LogWindowPlugin,
             // debug_annotation::DebugAnnotPlugin,
         ));
     }

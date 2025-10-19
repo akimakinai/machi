@@ -5,6 +5,8 @@ use crate::item::ItemStack;
 #[derive(Component, Debug, Clone)]
 pub struct Inventory {
     pub slots: Vec<Option<ItemStack>>,
+    /// Treats the last N slots in inventory as hotbar slots
+    pub hotbar: Option<u32>,
 }
 
 impl Inventory {
