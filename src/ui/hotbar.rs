@@ -89,9 +89,11 @@ fn update_hotbar(
             continue;
         };
 
-        let hotbar_num = inventory.hotbar.unwrap_or(0) as usize;
+        let Some(hotbar_num) = inventory.hotbar else {
+            continue;
+        };
 
-        for i in 0..hotbar_num {
+        for i in 0..hotbar_num as usize {
             let Some(&child) = children.get(i) else {
                 error!("Hotbar slot {} missing", i);
                 break;

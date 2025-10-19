@@ -16,6 +16,7 @@ pub fn plugin(app: &mut App) {
         .add_systems(Startup, register_item_icon_materials);
 }
 
+/// UI node that displays an item icon.
 #[derive(Component)]
 #[require(Node)]
 #[component(immutable)]
@@ -36,6 +37,10 @@ fn add_item_icon(
         return;
     };
     let Some(item_id) = item_icon.0 else {
+        commands.entity(entity).remove::<(
+            MaterialNode<ItemIconMaterial>,
+            MaterialNode<BlockIconMaterial>,
+        )>();
         return;
     };
 

@@ -6,9 +6,9 @@ pub struct ItemPlugin;
 
 impl Plugin for ItemPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ItemRegistry>();
-        app.add_systems(Startup, startup);
-        app.add_observer(on_use_dynamite);
+        app.init_resource::<ItemRegistry>()
+            .add_systems(Startup, startup)
+            .add_observer(on_use_dynamite);
     }
 }
 
@@ -54,6 +54,8 @@ impl ItemStack {
 
 #[derive(Resource, Default)]
 pub struct ItemRegistry {
+    /// Functions that trigger corresponding `ItemUse` events.
+    /// This is for type erasure.
     on_use: HashMap<ItemId, fn(&mut Commands, Entity)>,
 }
 
@@ -63,6 +65,12 @@ impl ItemRegistry {
             .insert(item_id, |commands: &mut Commands, player: Entity| {
                 commands.trigger(ItemUse::<T>::new(player));
             });
+    }
+
+    pub fn use_item(&self, item_id: ItemId, commands: &mut Commands, player: Entity) {
+        if let Some(on_use) = self.on_use.get(&item_id) {
+            on_use(commands, player);
+        }
     }
 }
 

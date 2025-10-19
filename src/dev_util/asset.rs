@@ -19,6 +19,7 @@ impl<A: Asset> Plugin for AssetLoadObserverPlugin<A> {
     }
 }
 
+/// Fires [`AssetLoad`] event when the asset is loaded.
 #[derive(Component)]
 pub struct AssetLoadObserved<T: Asset>(pub Handle<T>);
 

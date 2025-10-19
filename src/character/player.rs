@@ -1,8 +1,14 @@
-use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
+use bevy::{
+    input::{common_conditions::input_just_pressed, mouse::AccumulatedMouseMotion},
+    prelude::*,
+};
 
 use crate::{
     character::controller::{MovementEvent, MovementEventKind},
+    inventory::Inventory,
+    item::ItemRegistry,
     pause::PausableSystems,
+    ui::hotbar::Hotbar,
 };
 
 pub struct PlayerPlugin;
@@ -13,7 +19,13 @@ impl Plugin for PlayerPlugin {
             Update,
             (keyboard_input, gamepad_input).in_set(PausableSystems),
         )
-        .add_systems(Update, player_camera_control.in_set(PausableSystems));
+        .add_systems(Update, player_camera_control.in_set(PausableSystems))
+        .add_systems(
+            Update,
+            use_selected_hotbar_item
+                .in_set(PausableSystems)
+                .run_if(input_just_pressed(MouseButton::Right)),
+        );
     }
 }
 
@@ -111,6 +123,47 @@ fn player_camera_control(
     let mut rotation = player_transform.rotation.to_euler(EulerRot::YXZ);
     rotation.0 += -mouse.delta.x * MOUSE_SENSITIVITY;
     player_transform.rotation = Quat::from_euler(EulerRot::YXZ, rotation.0, 0.0, 0.0);
+
+    Ok(())
+}
+
+/// Running this system uses the item in the currently selected hotbar slot.
+fn use_selected_hotbar_item(
+    hotbars: Query<&Hotbar>,
+    mut inventories: Query<(&mut Inventory, Option<&ChildOf>)>,
+    players: Query<(), With<Player>>,
+    registry: Res<ItemRegistry>,
+    mut commands: Commands,
+) -> Result<()> {
+    for hotbar in &hotbars {
+        let Ok((mut inventory, parent)) = inventories.get_mut(hotbar.inventory) else {
+            continue;
+        };
+
+        let Some(&ChildOf(owner)) = parent else {
+            continue;
+        };
+
+        if !players.contains(owner) {
+            continue;
+        }
+
+        let slot_idx = hotbar.active_slot as usize;
+        let Some(Some(stack)) = inventory.slots.get_mut(slot_idx) else {
+            continue;
+        };
+
+        registry.use_item(stack.item_id, &mut commands, owner);
+
+        if stack.quantity() == 1 {
+            inventory.slots[slot_idx] = None;
+            debug!("Used up item stack in hotbar slot {}", slot_idx);
+        } else {
+            stack.set_quantity(stack.quantity() - 1)?;
+        }
+
+        // we should make item stack an entity probably
+    }
 
     Ok(())
 }
