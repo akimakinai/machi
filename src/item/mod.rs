@@ -1,3 +1,5 @@
+pub mod dynamite;
+
 use std::marker::PhantomData;
 
 use bevy::{platform::collections::HashMap, prelude::*};
@@ -6,9 +8,8 @@ pub struct ItemPlugin;
 
 impl Plugin for ItemPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ItemRegistry>()
-            .add_systems(Startup, startup)
-            .add_observer(on_use_dynamite);
+        app.init_resource::<ItemRegistry>();
+        app.add_plugins(dynamite::plugin);
     }
 }
 
@@ -75,7 +76,7 @@ impl ItemRegistry {
 }
 
 #[derive(Event)]
-struct ItemUse<T> {
+pub struct ItemUse<T> {
     player: Entity,
     marker: PhantomData<T>,
 }
@@ -87,15 +88,8 @@ impl<T> ItemUse<T> {
             marker: PhantomData,
         }
     }
-}
 
-fn startup(mut reg: ResMut<ItemRegistry>) {
-    reg.register_use::<Dynamite>(ItemId(256));
-}
-
-#[derive(Component)]
-pub struct Dynamite;
-
-fn on_use_dynamite(on: On<ItemUse<Dynamite>>) {
-    info!("Dynamite used by {}", on.event().player);
+    pub fn player(&self) -> Entity {
+        self.player
+    }
 }
