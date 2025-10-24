@@ -1,4 +1,4 @@
-pub mod item_stack;
+pub mod dropped_item;
 
 use bevy::prelude::*;
 
@@ -7,6 +7,6 @@ pub struct ObjectPlugin;
 
 impl Plugin for ObjectPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(item_stack::ItemStackObjPlugin);
+        app.add_plugins(dropped_item::DroppedItemPlugin);
     }
 }

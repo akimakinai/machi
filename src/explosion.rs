@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 
-use crate::{item::ItemStack, object::item_stack::spawn_item_stack, terrain::chunk::WriteBlocks};
+use crate::{
+    item::ItemStack, object::dropped_item::spawn_dropped_item, terrain::chunk::WriteBlocks,
+};
 
 pub struct ExplosionPlugin;
 
@@ -97,7 +99,7 @@ fn on_explode(
                 }
 
                 if let Some(block) = blocks.damage_block(block_pos, damage)? {
-                    commands.queue(spawn_item_stack(
+                    commands.queue(spawn_dropped_item(
                         ItemStack::new(block.as_item_id(), 1)?,
                         Transform::from_translation(block_center),
                     ));

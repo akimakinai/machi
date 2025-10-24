@@ -6,39 +6,38 @@ use bevy::{
 };
 
 use crate::{
-    character::player::Player,
     inventory::Inventory,
     item::{ItemId, ItemStack},
+    pause::PausableSystems,
     physics::GameLayer,
 };
 
-pub struct ItemStackObjPlugin;
+pub struct DroppedItemPlugin;
 
-impl Plugin for ItemStackObjPlugin {
+impl Plugin for DroppedItemPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ItemStackObjAssets>()
-            .add_systems(Update, merge_items)
-            .add_systems(Update, pickup_items);
+        app.init_resource::<DroppedItemAssets>()
+            .add_systems(Update, (merge_items, pickup_items).in_set(PausableSystems));
     }
 }
 
 #[derive(Component)]
-pub struct ItemStackObj {
+pub struct DroppedItem {
     item_stack: ItemStack,
 }
 
 #[derive(Component)]
 struct ItemSensor;
 
-pub fn item_stack_bundle(
+pub fn dropped_item_bundle(
     item_stack: ItemStack,
-    item_stack_obj_assets: &ItemStackObjAssets,
+    item_stack_obj_assets: &DroppedItemAssets,
     overrides: impl Bundle,
 ) -> Result<impl Bundle> {
     let item_id = item_stack.item_id;
 
     if item_stack.quantity() == 0 {
-        return Err("Cannot create ItemStackObj with quantity 0".into());
+        return Err("Cannot create DroppedItem with quantity 0".into());
     }
 
     let num_cubes = (item_stack.quantity() as f32).log2().ceil() as u32 + 1;
@@ -66,7 +65,7 @@ pub fn item_stack_bundle(
 
     // Sensor to detect collisions for merging and pickup
     let sensor = (
-        Name::new("ItemStackObj Sensor"),
+        Name::new("DroppedItem Sensor"),
         ItemSensor,
         Sphere::new(0.5).collider(),
         Sensor,
@@ -78,8 +77,8 @@ pub fn item_stack_bundle(
     );
 
     Ok((
-        Name::new(format!("ItemStackObj ({:?})", item_stack)),
-        ItemStackObj { item_stack },
+        Name::new(format!("DroppedItem ({:?})", item_stack)),
+        DroppedItem { item_stack },
         Sphere::new(0.2).collider(),
         CollisionLayers::new(
             [GameLayer::Object],
@@ -93,10 +92,10 @@ pub fn item_stack_bundle(
     ))
 }
 
-pub fn spawn_item_stack(item_stack: ItemStack, overrides: impl Bundle) -> impl Command {
+pub fn spawn_dropped_item(item_stack: ItemStack, overrides: impl Bundle) -> impl Command {
     (move |world: &mut World| -> Result<()> {
-        let assets = world.resource::<ItemStackObjAssets>();
-        let b = item_stack_bundle(item_stack, assets, overrides)?;
+        let assets = world.resource::<DroppedItemAssets>();
+        let b = dropped_item_bundle(item_stack, assets, overrides)?;
         world.spawn(b);
         Ok(())
     })
@@ -104,13 +103,13 @@ pub fn spawn_item_stack(item_stack: ItemStack, overrides: impl Bundle) -> impl C
 }
 
 #[derive(Resource)]
-pub struct ItemStackObjAssets {
+pub struct DroppedItemAssets {
     // TODO: mesh should also be a HashMap
     mesh: Handle<Mesh>,
     material_map: HashMap<ItemId, Handle<StandardMaterial>>,
 }
 
-impl FromWorld for ItemStackObjAssets {
+impl FromWorld for DroppedItemAssets {
     fn from_world(world: &mut World) -> Self {
         let mut meshes = world.resource_mut::<Assets<Mesh>>();
         let mesh = meshes.add(Mesh::from(Cuboid::from_length(0.2)));
@@ -132,7 +131,7 @@ impl FromWorld for ItemStackObjAssets {
             }),
         );
 
-        ItemStackObjAssets { mesh, material_map }
+        DroppedItemAssets { mesh, material_map }
     }
 }
 
@@ -140,8 +139,8 @@ fn merge_items(
     mut commands: Commands,
     mut collision_started: MessageReader<CollisionStart>,
     merge_sensors: Query<&ChildOf, With<ItemSensor>>,
-    item_stack_objs: Query<(Entity, &ItemStackObj)>,
-    item_assets: Res<ItemStackObjAssets>,
+    item_stack_objs: Query<(Entity, &DroppedItem)>,
+    item_assets: Res<DroppedItemAssets>,
     transforms: Query<&Transform>,
 ) -> Result<()> {
     let mut merged = EntityHashSet::default();
@@ -181,10 +180,10 @@ fn merge_items(
 
         let total_quantity = stack1.1.item_stack.quantity() + stack2.1.item_stack.quantity();
         if total_quantity > ItemStack::MAX_QUANTITY {
-            commands.entity(stack1.0).insert(ItemStackObj {
+            commands.entity(stack1.0).insert(DroppedItem {
                 item_stack: ItemStack::new(stack1.1.item_stack.item_id, ItemStack::MAX_QUANTITY)?,
             });
-            commands.entity(stack2.0).insert(ItemStackObj {
+            commands.entity(stack2.0).insert(DroppedItem {
                 item_stack: ItemStack::new(
                     stack2.1.item_stack.item_id,
                     total_quantity - ItemStack::MAX_QUANTITY,
@@ -196,7 +195,7 @@ fn merge_items(
         commands.entity(stack1.0).despawn();
         commands.entity(stack2.0).despawn();
 
-        commands.spawn(item_stack_bundle(
+        commands.spawn(dropped_item_bundle(
             merged_item_stack,
             &item_assets,
             Transform::from_translation(mid_translation),
@@ -206,13 +205,17 @@ fn merge_items(
     Ok(())
 }
 
+/// A character with this component and an inventory can pick up dropped items.
+#[derive(Component, Default, Clone, Copy)]
+pub struct PickupItems;
+
 fn pickup_items(
-    players: Query<&Children, With<Player>>,
+    chars: Query<&Children, With<PickupItems>>,
     mut inventories: Query<&mut Inventory>,
-    item_objs: Query<(&ItemStackObj, &Transform)>,
+    item_objs: Query<(&DroppedItem, &Transform)>,
     item_sensors: Query<&ChildOf, With<ItemSensor>>,
     mut collision_started: MessageReader<CollisionStart>,
-    item_assets: Res<ItemStackObjAssets>,
+    item_assets: Res<DroppedItemAssets>,
     mut commands: Commands,
 ) -> Result<()> {
     for collision in collision_started.read() {
@@ -222,11 +225,11 @@ fn pickup_items(
             ..
         } = collision;
 
-        let (player_children, item_id) = if let Ok(player_children) = players.get(collider1)
+        let (player_children, item_id) = if let Ok(player_children) = chars.get(collider1)
             && let Ok(item_sensor_parent) = item_sensors.get(collider2)
         {
             (player_children, item_sensor_parent.parent())
-        } else if let Ok(player_children) = players.get(collider2)
+        } else if let Ok(player_children) = chars.get(collider2)
             && let Ok(item_sensor_parent) = item_sensors.get(collider1)
         {
             (player_children, item_sensor_parent.parent())
@@ -247,7 +250,7 @@ fn pickup_items(
                 continue;
             }
 
-            commands.spawn(item_stack_bundle(
+            commands.spawn(dropped_item_bundle(
                 remaining,
                 &item_assets,
                 Transform::from_translation(item_transform.translation),

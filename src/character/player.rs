@@ -7,6 +7,7 @@ use crate::{
     character::controller::{MovementEvent, MovementEventKind},
     inventory::Inventory,
     item::ItemRegistry,
+    object::dropped_item::PickupItems,
     pause::PausableSystems,
     ui::hotbar::Hotbar,
 };
@@ -31,6 +32,7 @@ impl Plugin for PlayerPlugin {
 
 /// Marker for the character to be controlled by the player.
 #[derive(Component)]
+#[require(PickupItems)]
 pub struct Player;
 
 #[derive(Component)]

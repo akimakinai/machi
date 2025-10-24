@@ -4,7 +4,7 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use std::f32::consts::PI;
 
-use crate::{character::player::Player, pause::PausableSystems};
+use crate::pause::PausableSystems;
 
 pub(super) fn plugin(app: &mut App) {
     app.add_observer(movement)
@@ -67,18 +67,7 @@ fn update_ground_shape_caster(
             .first()
             .ok_or_else(|| BevyError::from("CharacterController has no colliders attached"))?;
 
-        let mut collider_transform = Transform::default();
-        let mut cur_id = collider_id;
-        while let Ok((t, parent)) = transforms.get(cur_id) {
-            collider_transform = *t * collider_transform;
-            if let Some(&ChildOf(parent)) = parent
-                && parent != controller_id
-            {
-                cur_id = parent;
-            } else {
-                break;
-            }
-        }
+        let collider_transform = relative_transform(transforms, controller_id, collider_id);
 
         let mut caster_shape = colliders.get(collider_id)?.clone();
         // Create shape caster as a slightly smaller version of collider
@@ -91,6 +80,26 @@ fn update_ground_shape_caster(
     }
 
     Ok(())
+}
+
+fn relative_transform(
+    transforms: Query<(&Transform, Option<&ChildOf>)>,
+    base: Entity,
+    target: Entity,
+) -> Transform {
+    let mut res = Transform::default();
+    let mut cur_id = target;
+    while let Ok((t, parent)) = transforms.get(cur_id) {
+        res = *t * res;
+        if let Some(&ChildOf(parent)) = parent
+            && parent != base
+        {
+            cur_id = parent;
+        } else {
+            break;
+        }
+    }
+    res
 }
 
 /// A marker component indicating that an entity is on the ground.
@@ -107,7 +116,7 @@ impl Grounded {
 fn update_grounded(
     mut query: Query<
         (&ShapeHits, &Rotation, &CharacterController, &mut Grounded),
-        (With<CharacterController>, With<Player>),
+        With<CharacterController>,
     >,
 ) {
     for (hits, rotation, controller, mut grounded) in &mut query {

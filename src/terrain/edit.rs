@@ -3,7 +3,7 @@ use bevy::{prelude::*, window::PrimaryWindow};
 
 use crate::{
     item::ItemStack,
-    object::item_stack::{ItemStackObjAssets, item_stack_bundle},
+    object::dropped_item::{DroppedItemAssets, dropped_item_bundle},
     pause::Pause,
     terrain::chunk::BlockId,
 };
@@ -31,7 +31,7 @@ fn on_click(
     hovered: Res<HoveredBlock>,
     mut blocks: WriteBlocks,
     mut commands: Commands,
-    item_assets: Res<ItemStackObjAssets>,
+    item_assets: Res<DroppedItemAssets>,
     pause: Res<State<Pause>>,
 ) -> Result<()> {
     if pause.0 {
@@ -54,7 +54,7 @@ fn on_click(
                 rand::random::<f32>() * 2.0,
                 (rand::random::<f32>() - 0.5) * 2.0,
             ));
-            commands.spawn(item_stack_bundle(
+            commands.spawn(dropped_item_bundle(
                 ItemStack::new(block_id.as_item_id(), 1)?,
                 &item_assets,
                 (
