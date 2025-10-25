@@ -17,7 +17,8 @@ pub struct DroppedItemPlugin;
 impl Plugin for DroppedItemPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DroppedItemAssets>()
-            .add_systems(Update, (merge_items, pickup_items).in_set(PausableSystems));
+            .add_systems(Update, (merge_items, pickup_items).in_set(PausableSystems))
+            .add_systems(Update, animate_dropped_items.in_set(PausableSystems));
     }
 }
 
@@ -262,4 +263,18 @@ fn pickup_items(
     }
 
     Ok(())
+}
+
+fn animate_dropped_items(
+    mut items: Query<&Children, With<DroppedItem>>,
+    mut mesh_tr: Query<&mut Transform, With<Mesh3d>>,
+    time: Res<Time>,
+) {
+    for children in &mut items {
+        for child in children.iter() {
+            if let Ok(mut transform) = mesh_tr.get_mut(child) {
+                transform.rotation *= Quat::from_axis_angle(Vec3::Y, time.delta_secs() * 0.5);
+            }
+        }
+    }
 }

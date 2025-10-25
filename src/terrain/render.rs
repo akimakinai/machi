@@ -14,7 +14,10 @@ use bevy::{
 };
 use mcubes::MarchingCubes;
 
-use crate::{physics::GameLayer, terrain::chunk::BlockId};
+use crate::{
+    physics::{GameLayer, WakeCollidingEntitiesOnDespawn},
+    terrain::chunk::BlockId,
+};
 
 use super::chunk::{CHUNK_HEIGHT, CHUNK_SIZE, Chunk, ChunkMap, ChunkUnloaded, ChunkUpdated};
 
@@ -527,6 +530,8 @@ fn spawn_generated_terrain_mesh(
                     "Render Chunk Mesh ({}, {})",
                     chunk.position.x, chunk.position.y
                 )),
+                // terrains are despawned and recreated, so colliding entities keep sleeping otherwise
+                WakeCollidingEntitiesOnDespawn,
             ));
             if settings.debug {
                 mesh_entity.with_child(Gizmo {
