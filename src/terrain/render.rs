@@ -521,10 +521,7 @@ fn spawn_generated_terrain_mesh(
                 MeshMaterial3d(terrain_texture.material_handle.clone()),
                 RigidBody::Static,
                 ColliderConstructor::TrimeshFromMesh,
-                CollisionLayers::new(
-                    [GameLayer::Terrain],
-                    [GameLayer::Default, GameLayer::Character, GameLayer::Object],
-                ),
+                CollisionLayers::new([GameLayer::Terrain], GameLayer::all_bits()),
                 Transform::from_translation(Vec3::splat(-0.5)),
                 Name::new(format!(
                     "Render Chunk Mesh ({}, {})",

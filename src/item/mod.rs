@@ -61,7 +61,8 @@ pub struct ItemRegistry {
 }
 
 impl ItemRegistry {
-    pub fn register_use<T: Component + 'static>(&mut self, item_id: ItemId) {
+    // TODO: item trait?
+    pub fn register_use<T: Sync + Send + 'static>(&mut self, item_id: ItemId) {
         self.on_use
             .insert(item_id, |commands: &mut Commands, player: Entity| {
                 commands.trigger(ItemUse::<T>::new(player));
@@ -77,19 +78,19 @@ impl ItemRegistry {
 
 #[derive(Event)]
 pub struct ItemUse<T> {
-    player: Entity,
+    user: Entity,
     marker: PhantomData<T>,
 }
 
 impl<T> ItemUse<T> {
-    pub fn new(player: Entity) -> Self {
+    pub fn new(user: Entity) -> Self {
         Self {
-            player,
+            user,
             marker: PhantomData,
         }
     }
 
-    pub fn player(&self) -> Entity {
-        self.player
+    pub fn user(&self) -> Entity {
+        self.user
     }
 }

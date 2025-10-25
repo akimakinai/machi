@@ -7,4 +7,5 @@ pub enum GameLayer {
     Terrain,
     Character,
     Object,
+    Projectile,
 }
