@@ -69,6 +69,7 @@ fn on_dynamite_collision(
     transforms: Query<&GlobalTransform>,
     mut commands: Commands,
 ) -> Result<()> {
+    // collider1 is `#[event_target]`
     let dynamite_id = col.event().collider1;
     info!(
         "Dynamite {:?} collided to {:?}, exploding!",
