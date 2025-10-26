@@ -273,7 +273,7 @@ fn pickup_items(
             .ok_or("Player has no inventory")?;
         let mut inventory = inventories.get_mut(inventory)?;
 
-        if let Err(remaining) = inventory.add_item_stack(item_obj.item_stack.clone()) {
+        if let Err(remaining) = inventory.add_item_stack(item_obj.item_stack) {
             if remaining.quantity() == item_obj.item_stack.quantity() {
                 continue;
             }

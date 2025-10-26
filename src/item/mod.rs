@@ -30,7 +30,7 @@ impl ItemId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ItemStack {
     /// `item_id < 256` represents blocks
     pub item_id: ItemId,

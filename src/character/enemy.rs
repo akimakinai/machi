@@ -1,5 +1,8 @@
 use avian3d::prelude::*;
-use bevy::prelude::*;
+use bevy::{
+    ecs::{lifecycle::HookContext, world::DeferredWorld},
+    prelude::*,
+};
 
 use crate::{
     character::{
@@ -54,41 +57,53 @@ fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
         AnnotTargetAabb,
         SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("models/Enemy.glb"))),
         OverwriteAlpha(0.8),
+        DropItemOnDeath(ItemStack::new(ItemId(257), 3).unwrap()),
     );
 
     for i in 0..3 {
         let position = Vec3::new(15.0 + i as f32 * 5.0, 20.0, 20.0 + i as f32 * 5.0);
         let mut enemy = commands.spawn((enemy_base.clone(), Transform::from_translation(position)));
         let id = enemy.id();
-        enemy
-            .with_children(|parent| {
-                parent.spawn((
-                    SequenceNode { repeat: true },
-                    BehaviorTreeRoot::new(id),
-                    ActiveNode,
-                    children![
-                        (
-                            TimeLimitNode::from_seconds(10.0),
-                            children![(ChasePlayerAction)],
-                        ),
-                        (SleepAction::from_seconds(5.0)),
-                    ],
-                ));
-            })
-            .observe(drop_item_on_death);
+        enemy.with_children(|parent| {
+            parent.spawn((
+                SequenceNode { repeat: true },
+                BehaviorTreeRoot::new(id),
+                ActiveNode,
+                children![
+                    (
+                        TimeLimitNode::from_seconds(10.0),
+                        children![(ChasePlayerAction)],
+                    ),
+                    (SleepAction::from_seconds(5.0)),
+                ],
+            ));
+        });
 
         commands.spawn(debug_annot_ui(id));
     }
+}
+
+#[derive(Component, Clone)]
+#[component(on_add = on_add_drop_item_on_death)]
+struct DropItemOnDeath(ItemStack);
+
+fn on_add_drop_item_on_death(mut world: DeferredWorld, context: HookContext) {
+    world
+        .commands()
+        .entity(context.entity)
+        .observe(drop_item_on_death);
 }
 
 fn drop_item_on_death(
     death: On<DeathEvent>,
     mut commands: Commands,
     transforms: Query<&GlobalTransform>,
+    q: Query<&DropItemOnDeath>,
 ) -> Result<()> {
     let translation = transforms.get(death.event_target())?.translation();
+    let item_stack = q.get(death.event_target())?.0;
     commands.spawn((
-        dropped_item_bundle(ItemStack::new(ItemId(257), 3).unwrap())?,
+        dropped_item_bundle(item_stack)?,
         // TODO: use shape cast to drop at ground
         Transform::from_translation(translation + Vec3::Y * 0.5),
     ));
