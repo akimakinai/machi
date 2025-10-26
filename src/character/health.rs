@@ -65,7 +65,10 @@ pub fn deal_damage(target: Entity, source: Option<Entity>, amount: f32) -> impl 
     move |world: &mut World| {
         debug!("Dealing {} damage to {:?}", amount, target);
 
-        let mut health = world.get_mut::<Health>(target).unwrap();
+        let Some(mut health) = world.get_mut::<Health>(target) else {
+            warn!("Entity {:?} has no Health component", target);
+            return;
+        };
 
         if health.current <= 0.0 {
             // Already dead
