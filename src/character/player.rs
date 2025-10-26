@@ -158,13 +158,13 @@ fn use_selected_hotbar_item(
             continue;
         };
 
-        registry.use_item(stack.item_id, &mut commands, owner);
-
-        if stack.quantity() == 1 {
-            inventory.slots[slot_idx] = None;
-            debug!("Used up item stack in hotbar slot {}", slot_idx);
-        } else {
-            stack.set_quantity(stack.quantity() - 1)?;
+        if registry.use_item(stack.item_id, &mut commands, owner) {
+            if stack.quantity() == 1 {
+                inventory.slots[slot_idx] = None;
+                debug!("Used up item stack in hotbar slot {}", slot_idx);
+            } else {
+                stack.set_quantity(stack.quantity() - 1)?;
+            }
         }
 
         // we should make item stack an entity probably

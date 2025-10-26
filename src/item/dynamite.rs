@@ -5,7 +5,6 @@ use crate::{
     explosion::Explode,
     item::{Item, ItemId, ItemRegistry, ItemUse},
     physics::GameLayer,
-    ui::item_icon::{ItemIconMaterial, ItemIconRegistry},
 };
 
 pub fn plugin(app: &mut App) {
@@ -19,18 +18,10 @@ impl Item for DynamiteItem {
     const USABLE: bool = true;
 }
 
-fn register_items(
-    mut registry: ResMut<ItemRegistry>,
-    mut icon_registry: ResMut<ItemIconRegistry>,
-    mut item_icon_mats: ResMut<Assets<ItemIconMaterial>>,
-    asset_server: Res<AssetServer>,
-) {
-    registry.register_item::<DynamiteItem>(ItemId(256));
-    icon_registry.register_item(
+fn register_items(mut registry: ResMut<ItemRegistry>, asset_server: Res<AssetServer>) {
+    registry.register_item::<DynamiteItem>(
         ItemId(256),
-        item_icon_mats.add(ItemIconMaterial {
-            icon: asset_server.load("textures/items/dynamite.png"),
-        }),
+        asset_server.load("textures/items/dynamite.png"),
     );
 }
 

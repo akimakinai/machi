@@ -2,9 +2,7 @@ use avian3d::prelude::LinearVelocity;
 use bevy::{prelude::*, window::PrimaryWindow};
 
 use crate::{
-    item::ItemStack,
-    object::dropped_item::{DroppedItemAssets, dropped_item_bundle},
-    pause::Pause,
+    item::ItemStack, object::dropped_item::dropped_item_bundle, pause::Pause,
     terrain::chunk::BlockId,
 };
 
@@ -31,7 +29,6 @@ fn on_click(
     hovered: Res<HoveredBlock>,
     mut blocks: WriteBlocks,
     mut commands: Commands,
-    item_assets: Res<DroppedItemAssets>,
     pause: Res<State<Pause>>,
 ) -> Result<()> {
     if pause.0 {
@@ -54,14 +51,13 @@ fn on_click(
                 rand::random::<f32>() * 2.0,
                 (rand::random::<f32>() - 0.5) * 2.0,
             ));
-            commands.spawn(dropped_item_bundle(
-                ItemStack::new(block_id.as_item_id(), 1)?,
-                &item_assets,
+            commands.spawn((
+                dropped_item_bundle(ItemStack::new(block_id.as_item_id(), 1)?)?,
                 (
                     Transform::from_translation(block_pos.0.as_vec3() + Vec3::splat(0.5)),
                     random_vel,
                 ),
-            )?);
+            ));
         }
         PointerButton::Secondary => {
             debug!("Hit pos: {:?}, Hit face: {:?}", block_pos.0, block_pos.1);

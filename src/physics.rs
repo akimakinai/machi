@@ -23,8 +23,6 @@ pub struct WakeCollidingEntitiesOnDespawn;
 fn on_remove_wake_colliding_entities(mut world: DeferredWorld, context: HookContext) {
     let (mut entities, mut commands) = world.entities_and_commands();
 
-    debug!("Waking up colliding entities for {:?}", context.entity);
-
     if let Ok(entity) = entities.get_mut(context.entity)
         && let Some(cols) = entity.get::<CollidingEntities>()
     {

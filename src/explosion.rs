@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::{
     character::health::{Health, deal_damage},
     item::ItemStack,
-    object::dropped_item::spawn_dropped_item,
+    object::dropped_item::dropped_item_bundle,
     terrain::chunk::WriteBlocks,
 };
 
@@ -103,8 +103,8 @@ fn break_blocks_on_explode(
                     }
 
                     if let Some(block) = blocks.damage_block(block_pos, damage)? {
-                        commands.queue(spawn_dropped_item(
-                            ItemStack::new(block.as_item_id(), 1)?,
+                        commands.spawn((
+                            dropped_item_bundle(ItemStack::new(block.as_item_id(), 1)?)?,
                             Transform::from_translation(block_center),
                         ));
                     }

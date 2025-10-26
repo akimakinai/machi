@@ -6,13 +6,14 @@ use bevy::{
     shader::ShaderRef,
 };
 
-use crate::item::ItemId;
+use crate::item::{ItemId, ItemImagesAdded, ItemRegistry};
 
 pub fn plugin(app: &mut App) {
     app.add_plugins(UiMaterialPlugin::<BlockIconMaterial>::default())
         .add_plugins(UiMaterialPlugin::<ItemIconMaterial>::default())
         .init_resource::<ItemIconRegistry>()
         .add_observer(add_item_icon)
+        .add_observer(item_image_updated)
         .add_systems(Startup, register_item_icon_materials);
 }
 
@@ -132,6 +133,24 @@ impl ItemIconRegistry {
 
     pub fn get_item(&self, item_id: ItemId) -> Option<Handle<ItemIconMaterial>> {
         self.item_materials.get(&item_id).cloned()
+    }
+}
+
+fn item_image_updated(
+    on: On<ItemImagesAdded>,
+    item_reg: Res<ItemRegistry>,
+    mut reg: ResMut<ItemIconRegistry>,
+    mut item_icon_materials: ResMut<Assets<ItemIconMaterial>>,
+) {
+    for &item_id in on.event().0.iter() {
+        if let Some(image) = item_reg.images.get(&item_id) {
+            reg.register_item(
+                item_id,
+                item_icon_materials.add(ItemIconMaterial {
+                    icon: image.clone(),
+                }),
+            );
+        }
     }
 }
 

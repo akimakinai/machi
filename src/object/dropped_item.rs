@@ -1,13 +1,13 @@
 use avian3d::prelude::*;
 use bevy::{
-    ecs::{entity::EntityHashSet, error::HandleError as _, relationship::RelatedSpawner},
+    ecs::{entity::EntityHashSet, relationship::RelatedSpawner},
     platform::collections::HashMap,
     prelude::*,
 };
 
 use crate::{
     inventory::Inventory,
-    item::{ItemId, ItemStack},
+    item::{ItemId, ItemImagesAdded, ItemRegistry, ItemStack},
     pause::PausableSystems,
     physics::GameLayer,
 };
@@ -17,12 +17,14 @@ pub struct DroppedItemPlugin;
 impl Plugin for DroppedItemPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DroppedItemAssets>()
+            .add_observer(add_item_texture)
             .add_systems(Update, (merge_items, pickup_items).in_set(PausableSystems))
             .add_systems(Update, animate_dropped_items.in_set(PausableSystems));
     }
 }
 
 #[derive(Component)]
+#[require(Visibility, Transform)]
 pub struct DroppedItem {
     item_stack: ItemStack,
 }
@@ -30,11 +32,7 @@ pub struct DroppedItem {
 #[derive(Component)]
 struct ItemSensor;
 
-pub fn dropped_item_bundle(
-    item_stack: ItemStack,
-    item_stack_obj_assets: &DroppedItemAssets,
-    overrides: impl Bundle,
-) -> Result<impl Bundle> {
+pub fn dropped_item_bundle(item_stack: ItemStack) -> Result<impl Bundle> {
     let item_id = item_stack.item_id;
 
     if item_stack.quantity() == 0 {
@@ -43,25 +41,44 @@ pub fn dropped_item_bundle(
 
     let num_cubes = (item_stack.quantity() as f32).log2().ceil() as u32 + 1;
 
-    let cloned_mesh = item_stack_obj_assets.mesh.clone();
-    let cloned_material = item_stack_obj_assets
-        .material_map
-        .get(&item_id)
-        .cloned()
-        .unwrap_or_default();
-    let spawn_blocks = move |parent: &mut RelatedSpawner<ChildOf>| {
-        for i in 0..num_cubes {
-            let offset = Vec3::new(
-                (rand::random::<f32>() - 0.5) * 0.2,
-                (rand::random::<f32>() - 0.5) * 0.2,
-                (rand::random::<f32>() - 0.5) * 0.2,
-            );
+    // Visual representation of the dropped item
+    let visual_spawner = if item_id.is_block() {
+        Box::new(move |parent: &mut RelatedSpawner<ChildOf>| {
+            let assets = parent.world().resource::<DroppedItemAssets>();
+            let cloned_mesh = assets.block_mesh.clone();
+            let cloned_material = assets
+                .material_map
+                .get(&item_id)
+                .cloned()
+                .unwrap_or_default();
+
+            for i in 0..num_cubes {
+                let offset = Vec3::new(
+                    (rand::random::<f32>() - 0.5) * 0.2,
+                    (rand::random::<f32>() - 0.5) * 0.2,
+                    (rand::random::<f32>() - 0.5) * 0.2,
+                );
+                parent.spawn((
+                    Transform::from_translation(offset + Vec3::Y * (i as f32 * 0.05)),
+                    Mesh3d(cloned_mesh.clone()),
+                    MeshMaterial3d(cloned_material.clone()),
+                ));
+            }
+        }) as Box<dyn Fn(&mut RelatedSpawner<ChildOf>) + Send + Sync>
+    } else {
+        Box::new(move |parent: &mut RelatedSpawner<ChildOf>| {
+            let assets = parent.world().resource::<DroppedItemAssets>();
             parent.spawn((
-                Transform::from_translation(offset + Vec3::Y * (i as f32 * 0.05)),
-                Mesh3d(cloned_mesh.clone()),
-                MeshMaterial3d(cloned_material.clone()),
+                Mesh3d(assets.item_mesh.clone()),
+                MeshMaterial3d(
+                    assets
+                        .material_map
+                        .get(&item_id)
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
             ));
-        }
+        })
     };
 
     // Sensor to detect collisions for merging and pickup
@@ -87,33 +104,23 @@ pub fn dropped_item_bundle(
         ),
         RigidBody::Dynamic,
         LockedAxes::ROTATION_LOCKED,
-        Visibility::Visible,
-        overrides,
-        Children::spawn((Spawn(sensor), SpawnWith(spawn_blocks))),
+        Children::spawn((Spawn(sensor), SpawnWith(visual_spawner))),
     ))
-}
-
-pub fn spawn_dropped_item(item_stack: ItemStack, overrides: impl Bundle) -> impl Command {
-    (move |world: &mut World| -> Result<()> {
-        let assets = world.resource::<DroppedItemAssets>();
-        let b = dropped_item_bundle(item_stack, assets, overrides)?;
-        world.spawn(b);
-        Ok(())
-    })
-    .handle_error()
 }
 
 #[derive(Resource)]
 pub struct DroppedItemAssets {
     // TODO: mesh should also be a HashMap
-    mesh: Handle<Mesh>,
+    block_mesh: Handle<Mesh>,
+    item_mesh: Handle<Mesh>,
     material_map: HashMap<ItemId, Handle<StandardMaterial>>,
 }
 
 impl FromWorld for DroppedItemAssets {
     fn from_world(world: &mut World) -> Self {
         let mut meshes = world.resource_mut::<Assets<Mesh>>();
-        let mesh = meshes.add(Mesh::from(Cuboid::from_length(0.2)));
+        let block_mesh = meshes.add(Mesh::from(Cuboid::from_length(0.2)));
+        let item_mesh = meshes.add(Mesh::from(Plane3d::new(-Vec3::Z, Vec2::splat(0.2))));
 
         let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
         let mut material_map = HashMap::new();
@@ -132,7 +139,30 @@ impl FromWorld for DroppedItemAssets {
             }),
         );
 
-        DroppedItemAssets { mesh, material_map }
+        DroppedItemAssets {
+            block_mesh,
+            item_mesh,
+            material_map,
+        }
+    }
+}
+
+fn add_item_texture(
+    on: On<ItemImagesAdded>,
+    mut item_assets: ResMut<DroppedItemAssets>,
+    item_registry: Res<ItemRegistry>,
+    mut sm: ResMut<Assets<StandardMaterial>>,
+) {
+    for &item_id in on.event().0.iter() {
+        if let Some(image) = item_registry.images.get(&item_id) {
+            let material = StandardMaterial {
+                base_color_texture: Some(image.clone()),
+                alpha_mode: AlphaMode::Mask(0.5),
+                cull_mode: None,
+                ..default()
+            };
+            item_assets.material_map.insert(item_id, sm.add(material));
+        }
     }
 }
 
@@ -141,7 +171,6 @@ fn merge_items(
     mut collision_started: MessageReader<CollisionStart>,
     merge_sensors: Query<&ChildOf, With<ItemSensor>>,
     item_stack_objs: Query<(Entity, &DroppedItem)>,
-    item_assets: Res<DroppedItemAssets>,
     transforms: Query<&Transform>,
 ) -> Result<()> {
     let mut merged = EntityHashSet::default();
@@ -196,11 +225,10 @@ fn merge_items(
         commands.entity(stack1.0).despawn();
         commands.entity(stack2.0).despawn();
 
-        commands.spawn(dropped_item_bundle(
-            merged_item_stack,
-            &item_assets,
+        commands.spawn((
+            dropped_item_bundle(merged_item_stack)?,
             Transform::from_translation(mid_translation),
-        )?);
+        ));
     }
 
     Ok(())
@@ -216,7 +244,6 @@ fn pickup_items(
     item_objs: Query<(&DroppedItem, &Transform)>,
     item_sensors: Query<&ChildOf, With<ItemSensor>>,
     mut collision_started: MessageReader<CollisionStart>,
-    item_assets: Res<DroppedItemAssets>,
     mut commands: Commands,
 ) -> Result<()> {
     for collision in collision_started.read() {
@@ -251,15 +278,14 @@ fn pickup_items(
                 continue;
             }
 
-            commands.spawn(dropped_item_bundle(
-                remaining,
-                &item_assets,
+            commands.spawn((
+                dropped_item_bundle(remaining)?,
                 Transform::from_translation(item_transform.translation),
-            )?);
+            ));
         }
 
         commands.entity(item_id).despawn();
-        debug!("Despawned item {:?}", item_id);
+        // debug!("Despawned item {:?}", item_id);
     }
 
     Ok(())

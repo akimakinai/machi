@@ -8,13 +8,15 @@ use crate::{
             TimeLimitNode,
         },
         controller::{CharacterController, MovementEvent, MovementEventKind},
-        health::{Health, despawn_on_death},
+        health::{DeathEvent, Health, despawn_on_death},
         player::Player,
     },
     dev_util::{
         debug_annotation::{debug_annot_ui, target::AnnotTargetAabb},
         mesh_alpha::OverwriteAlpha,
     },
+    item::{ItemId, ItemStack},
+    object::dropped_item::dropped_item_bundle,
     physics::GameLayer,
 };
 
@@ -73,10 +75,25 @@ fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ],
                 ));
             })
-            .observe(despawn_on_death);
+            .observe(despawn_on_death)
+            .observe(drop_item_on_death);
 
         commands.spawn(debug_annot_ui(id));
     }
+}
+
+fn drop_item_on_death(
+    death: On<DeathEvent>,
+    mut commands: Commands,
+    transforms: Query<&GlobalTransform>,
+) -> Result<()> {
+    let translation = transforms.get(death.event_target())?.translation();
+    commands.spawn((
+        dropped_item_bundle(ItemStack::new(ItemId(257), 3).unwrap())?,
+        // TODO: use shape cast to drop at ground
+        Transform::from_translation(translation + Vec3::Y * 0.5),
+    ));
+    Ok(())
 }
 
 #[derive(Component)]

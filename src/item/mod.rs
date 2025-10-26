@@ -3,14 +3,21 @@ pub mod dynamite;
 
 use std::marker::PhantomData;
 
-use bevy::{platform::collections::HashMap, prelude::*};
+use bevy::{
+    platform::collections::{HashMap, HashSet},
+    prelude::*,
+};
 
 pub struct ItemPlugin;
 
 impl Plugin for ItemPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ItemRegistry>();
-        app.add_plugins((bone::plugin, dynamite::plugin));
+        app.init_resource::<ItemRegistry>()
+            .add_plugins((bone::plugin, dynamite::plugin))
+            .add_systems(
+                PreUpdate,
+                trigger_item_images_added_event.run_if(resource_changed::<ItemRegistry>),
+            );
     }
 }
 
@@ -59,6 +66,7 @@ pub struct ItemRegistry {
     /// Functions that trigger corresponding `ItemUse` events.
     /// This is for type erasure.
     on_use: HashMap<ItemId, fn(&mut Commands, Entity)>,
+    pub images: HashMap<ItemId, Handle<Image>>,
 }
 
 /// ID type for items.
@@ -67,18 +75,23 @@ pub trait Item: Sync + Send + 'static {
 }
 
 impl ItemRegistry {
-    pub fn register_item<T: Item>(&mut self, item_id: ItemId) {
+    pub fn register_item<T: Item>(&mut self, item_id: ItemId, image: Handle<Image>) {
         if T::USABLE {
             self.on_use
                 .insert(item_id, |commands: &mut Commands, player: Entity| {
                     commands.trigger(ItemUse::<T>::new(player));
                 });
         }
+        self.images.insert(item_id, image);
     }
 
-    pub fn use_item(&self, item_id: ItemId, commands: &mut Commands, player: Entity) {
+    /// Returns true if the item is usable.
+    pub fn use_item(&self, item_id: ItemId, commands: &mut Commands, player: Entity) -> bool {
         if let Some(on_use) = self.on_use.get(&item_id) {
             on_use(commands, player);
+            true
+        } else {
+            false
         }
     }
 }
@@ -101,3 +114,23 @@ impl<T> ItemUse<T> {
         self.user
     }
 }
+
+fn trigger_item_images_added_event(
+    mut commands: Commands,
+    item_registry: Res<ItemRegistry>,
+    mut seen_item_ids: Local<HashSet<ItemId>>,
+) {
+    let mut new_item_ids = Vec::new();
+    for &item_id in item_registry.images.keys() {
+        if !seen_item_ids.contains(&item_id) {
+            seen_item_ids.insert(item_id);
+            new_item_ids.push(item_id);
+        }
+    }
+    if !new_item_ids.is_empty() {
+        commands.trigger(ItemImagesAdded(new_item_ids));
+    }
+}
+
+#[derive(Event, Debug)]
+pub struct ItemImagesAdded(pub Vec<ItemId>);
