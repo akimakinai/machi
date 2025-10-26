@@ -8,7 +8,7 @@ use crate::{
             TimeLimitNode,
         },
         controller::{CharacterController, MovementEvent, MovementEventKind},
-        health::{DeathEvent, Health, despawn_on_death},
+        health::{DeathEvent, DespawnOnDeath, Health},
         player::Player,
     },
     dev_util::{
@@ -33,7 +33,7 @@ impl Plugin for EnemyPlugin {
 }
 
 #[derive(Component, Clone)]
-#[require(Transform, Visibility, Health::new(100.0))]
+#[require(Transform, Visibility, Health::new(100.0), DespawnOnDeath)]
 pub struct Enemy;
 
 fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -75,7 +75,6 @@ fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ],
                 ));
             })
-            .observe(despawn_on_death)
             .observe(drop_item_on_death);
 
         commands.spawn(debug_annot_ui(id));

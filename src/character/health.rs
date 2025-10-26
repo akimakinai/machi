@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use bevy::prelude::*;
+use bevy::{
+    ecs::{lifecycle::HookContext, world::DeferredWorld},
+    prelude::*,
+};
 
 /// Add this component to an entity to give it health.
 /// Observe [`DamageEvent`] and [`DeathEvent`] to respond to damage and death.
@@ -86,6 +89,19 @@ pub fn deal_damage(target: Entity, source: Option<Entity>, amount: f32) -> impl 
     }
 }
 
-pub fn despawn_on_death(death: On<DeathEvent>, mut commands: Commands) {
+/// Despawns the entity when it receives a `DeathEvent`.
+/// Note that despawn is done in an observer.
+#[derive(Component, Default)]
+#[component(on_add = on_add_despawn_on_death)]
+pub struct DespawnOnDeath;
+
+fn on_add_despawn_on_death(mut world: DeferredWorld, context: HookContext) {
+    world
+        .commands()
+        .entity(context.entity)
+        .observe(despawn_on_death);
+}
+
+fn despawn_on_death(death: On<DeathEvent>, mut commands: Commands) {
     commands.entity(death.entity()).despawn();
 }
