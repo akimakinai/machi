@@ -63,7 +63,7 @@ fn main() {
             ..default()
         }))
         .add_plugins(SkeinPlugin::default())
-        .add_plugins((PhysicsPlugins::default(), PhysicsDebugPlugin))
+        .add_plugins(PhysicsPlugins::default())
         .add_plugins(PausePlugin)
         .add_plugins(ChunkPlugin)
         .add_plugins(RenderPlugin)

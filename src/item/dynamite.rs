@@ -25,8 +25,10 @@ fn register_items(mut registry: ResMut<ItemRegistry>, asset_server: Res<AssetSer
     );
 }
 
-#[derive(Component)]
-pub struct ThrownDynamite;
+#[derive(Component, Default)]
+pub struct ThrownDynamite {
+    exploded: bool,
+}
 
 const DYNAMITE_INIT_VEL: f32 = 10.0;
 const DYNAMITE_SPAWN_OFFSET: f32 = 0.5;
@@ -56,7 +58,7 @@ fn on_use_dynamite(
     let mesh = Cuboid::from_length(0.5);
     commands
         .spawn((
-            ThrownDynamite,
+            ThrownDynamite::default(),
             Mesh3d(meshes.add(mesh)),
             MeshMaterial3d::<StandardMaterial>::default(),
             RigidBody::Dynamic,
@@ -74,6 +76,7 @@ fn on_use_dynamite(
 fn on_dynamite_collision(
     col: On<CollisionStart>,
     transforms: Query<&GlobalTransform>,
+    mut dynamites: Query<&mut ThrownDynamite>,
     mut commands: Commands,
 ) -> Result<()> {
     // collider1 is `#[event_target]`
@@ -83,6 +86,14 @@ fn on_dynamite_collision(
         dynamite_id,
         col.event().collider2,
     );
+
+    // There may be multiple collisions at once
+    let mut dynamite = dynamites.get_mut(dynamite_id)?;
+    if dynamite.exploded {
+        return Ok(());
+    }
+    dynamite.exploded = true;
+
     commands.entity(dynamite_id).despawn();
 
     let dynamite_pos = transforms.get(dynamite_id)?;

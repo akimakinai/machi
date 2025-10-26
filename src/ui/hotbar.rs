@@ -25,7 +25,6 @@ impl Hotbar {
         }
     }
 }
-
 pub fn build_hotbar(
     In(inventory_id): In<Entity>,
     inventories: Query<&Inventory>,
@@ -58,18 +57,22 @@ pub fn build_hotbar(
                         },
                     ))
                     .with_child((
-                        Text::default(),
-                        TextFont {
-                            font_size: 12.0,
-                            ..default()
-                        },
-                        Name::new("Item Count"),
+                        BorderRadius::all(px(4.0)),
+                        BackgroundColor(Color::BLACK),
                         Node {
+                            width: px(15.0),
                             position_type: PositionType::Absolute,
                             right: px(0),
                             bottom: px(0),
                             ..default()
                         },
+                        children![(
+                            Text::default(),
+                            TextFont {
+                                font_size: 12.0,
+                                ..default()
+                            },
+                        )],
                     ));
             }
         })),
@@ -80,24 +83,28 @@ pub fn build_hotbar(
 fn update_hotbar(
     hotbars: Query<(&Hotbar, &Children)>,
     inventories: Query<&Inventory>,
-    mut item_icons: Query<(&ItemIconNode, &mut BorderColor, &Children)>,
+    mut item_icons: Query<(Entity, &ItemIconNode, &mut BorderColor)>,
+    children: Query<&Children>,
     mut texts: Query<&mut Text>,
     mut commands: Commands,
 ) -> Result<()> {
-    for (hotbar, children) in hotbars.iter() {
+    for (hotbar, hotbar_children) in hotbars.iter() {
         let Ok(inventory) = inventories.get(hotbar.inventory) else {
             continue;
         };
 
-        let Some(hotbar_num) = inventory.hotbar else {
-            continue;
-        };
+        for (i, child) in hotbar_children.iter().enumerate() {
+            if let Some(num) = inventory.hotbar {
+                assert!(i < num as usize);
+            }
 
-        for i in 0..hotbar_num as usize {
-            let Some(&child) = children.get(i) else {
-                error!("Hotbar slot {} missing", i);
-                break;
-            };
+            let (item_icon_id, item_icon, mut border_color) = item_icons.get_mut(child)?;
+
+            if hotbar.active_slot as usize == i {
+                border_color.set_if_neq(BorderColor::all(Color::BLACK));
+            } else {
+                border_color.set_if_neq(BorderColor::all(Color::WHITE));
+            }
 
             let Some(slot) = inventory.slots.get(i) else {
                 error!(?inventory, "Hotbar slot {} out of bounds", i);
@@ -107,27 +114,20 @@ fn update_hotbar(
             let item_id = slot.as_ref().map(|is| is.item_id);
             let item_num = slot.as_ref().map(|is| is.quantity()).unwrap_or(0);
 
-            let (item_icon, mut border_color, children) = item_icons.get_mut(child)?;
-
-            if hotbar.active_slot as usize == i {
-                border_color.set_if_neq(BorderColor::all(Color::BLACK));
-            } else {
-                border_color.set_if_neq(BorderColor::all(Color::WHITE));
-            }
-
             if item_icon.0 != item_id {
                 commands.entity(child).insert(ItemIconNode(item_id));
             }
 
-            let Some(&text_id) = children.first() else {
-                continue;
-            };
-
-            texts.get_mut(text_id)?.0 = if item_num > 1 {
-                item_num.to_string()
-            } else {
-                String::new()
-            };
+            for id in children.iter_leaves(item_icon_id) {
+                if let Ok(mut text_entity) = texts.get_mut(id) {
+                    text_entity.0 = if item_num > 1 {
+                        item_num.to_string()
+                    } else {
+                        String::new()
+                    };
+                    break;
+                }
+            }
         }
     }
 

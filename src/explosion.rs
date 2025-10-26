@@ -97,7 +97,9 @@ fn break_blocks_on_explode(
                         continue;
                     }
 
-                    let damage = ((radius - distance) / radius).clamp(0.0, 1.0).powf(1.5);
+                    let damage = ((radius - (distance - radius / 2.0)) / radius)
+                        .clamp(0.0, 1.0)
+                        .powf(1.5);
                     if damage <= 0.0 {
                         continue;
                     }
