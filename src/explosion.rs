@@ -1,22 +1,26 @@
 use bevy::prelude::*;
 
 use crate::{
-    item::ItemStack, object::dropped_item::spawn_dropped_item, terrain::chunk::WriteBlocks,
+    character::health::{Health, deal_damage},
+    item::ItemStack,
+    object::dropped_item::spawn_dropped_item,
+    terrain::chunk::WriteBlocks,
 };
 
 pub struct ExplosionPlugin;
 
 impl Plugin for ExplosionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup)
-            .add_observer(on_explode)
+        app.add_message::<Explode>()
+            .add_systems(Startup, setup)
+            .add_systems(Update, (break_blocks_on_explode, deal_damage_on_explode))
             .add_systems(Update, update_effects)
             .add_systems(Update, face_camera_billboards)
             .add_systems(
                 Update,
                 |mut commands: Commands, key: Res<ButtonInput<KeyCode>>| {
                     if key.just_pressed(KeyCode::KeyQ) {
-                        commands.trigger(Explode {
+                        commands.write_message(Explode {
                             position: Vec3::new(0.0, 13.0, 0.0),
                             radius: 5.0,
                         });
@@ -26,7 +30,7 @@ impl Plugin for ExplosionPlugin {
     }
 }
 
-#[derive(Event, Debug, Clone, Copy)]
+#[derive(Message, Debug, Clone, Copy)]
 pub struct Explode {
     pub position: Vec3,
     pub radius: f32,
@@ -70,47 +74,72 @@ fn setup(
     });
 }
 
-fn on_explode(
-    on: On<Explode>,
+fn break_blocks_on_explode(
+    mut explode_reader: MessageReader<Explode>,
     mut blocks: WriteBlocks,
     mut commands: Commands,
     assets: Res<ExplosionAssets>,
 ) -> Result<()> {
-    let event = on.event();
-    let radius = event.radius.max(0.1);
-    let center = event.position;
+    for explode in explode_reader.read() {
+        let radius = explode.radius.max(0.1);
+        let center = explode.position;
 
-    let min = (center - Vec3::splat(radius + 1.0)).floor().as_ivec3();
-    let max = (center + Vec3::splat(radius + 1.0)).ceil().as_ivec3();
+        let min = (center - Vec3::splat(radius + 1.0)).floor().as_ivec3();
+        let max = (center + Vec3::splat(radius + 1.0)).ceil().as_ivec3();
 
-    for x in min.x..=max.x {
-        for y in min.y..=max.y {
-            for z in min.z..=max.z {
-                let block_pos = IVec3::new(x, y, z);
-                let block_center = block_pos.as_vec3() + Vec3::splat(0.5);
-                let distance = block_center.distance(center);
-                if distance > radius {
-                    continue;
-                }
+        for x in min.x..=max.x {
+            for y in min.y..=max.y {
+                for z in min.z..=max.z {
+                    let block_pos = IVec3::new(x, y, z);
+                    let block_center = block_pos.as_vec3() + Vec3::splat(0.5);
+                    let distance = block_center.distance(center);
+                    if distance > radius {
+                        continue;
+                    }
 
-                let damage = ((radius - distance) / radius).clamp(0.0, 1.0).powf(1.5);
-                if damage <= 0.0 {
-                    continue;
-                }
+                    let damage = ((radius - distance) / radius).clamp(0.0, 1.0).powf(1.5);
+                    if damage <= 0.0 {
+                        continue;
+                    }
 
-                if let Some(block) = blocks.damage_block(block_pos, damage)? {
-                    commands.queue(spawn_dropped_item(
-                        ItemStack::new(block.as_item_id(), 1)?,
-                        Transform::from_translation(block_center),
-                    ));
+                    if let Some(block) = blocks.damage_block(block_pos, damage)? {
+                        commands.queue(spawn_dropped_item(
+                            ItemStack::new(block.as_item_id(), 1)?,
+                            Transform::from_translation(block_center),
+                        ));
+                    }
                 }
             }
         }
+
+        spawn_explosion_effect(&mut commands, &assets, center, radius);
     }
 
-    spawn_explosion_effect(&mut commands, &assets, center, radius);
-
     Ok(())
+}
+
+fn deal_damage_on_explode(
+    mut explode_reader: MessageReader<Explode>,
+    mut query: Query<(Entity, &GlobalTransform), With<Health>>,
+    mut commands: Commands,
+) {
+    for explode in explode_reader.read() {
+        let radius = explode.radius.max(0.1);
+        let center = explode.position;
+        for (entity, transform) in &mut query {
+            let distance = transform.translation().distance(center);
+            if distance > radius {
+                continue;
+            }
+
+            let damage = (1.0 - (distance / radius - 0.5)).clamp(0.0, 1.0).powf(1.5) * 100.0;
+            if damage <= 0.0 {
+                continue;
+            }
+
+            commands.queue(deal_damage(entity, None, damage));
+        }
+    }
 }
 
 fn spawn_explosion_effect(

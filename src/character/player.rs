@@ -4,7 +4,10 @@ use bevy::{
 };
 
 use crate::{
-    character::controller::{MovementEvent, MovementEventKind},
+    character::{
+        controller::{MovementEvent, MovementEventKind},
+        health::Health,
+    },
     inventory::Inventory,
     item::ItemRegistry,
     object::dropped_item::PickupItems,
@@ -32,7 +35,7 @@ impl Plugin for PlayerPlugin {
 
 /// Marker for the character to be controlled by the player.
 #[derive(Component)]
-#[require(PickupItems)]
+#[require(PickupItems, Health::new(100.0))]
 pub struct Player;
 
 #[derive(Component)]

@@ -290,7 +290,8 @@ fn on_remove_active_node(
     mut commands: Commands,
 ) {
     if has_result.contains(on.entity) {
-        commands.entity(on.entity).remove::<LeafNodeResult>();
+        // `try_remove` because the behavior tree can be being despawned
+        commands.entity(on.entity).try_remove::<LeafNodeResult>();
     }
 }
 

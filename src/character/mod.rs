@@ -3,6 +3,7 @@ use bevy::prelude::*;
 mod ai;
 pub mod controller;
 pub mod enemy;
+pub mod health;
 pub mod player;
 
 pub struct CharacterPlugin;

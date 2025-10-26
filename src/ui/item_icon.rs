@@ -11,7 +11,7 @@ use crate::item::ItemId;
 pub fn plugin(app: &mut App) {
     app.add_plugins(UiMaterialPlugin::<BlockIconMaterial>::default())
         .add_plugins(UiMaterialPlugin::<ItemIconMaterial>::default())
-        .init_resource::<ItemIconMaterialRegistry>()
+        .init_resource::<ItemIconRegistry>()
         .add_observer(add_item_icon)
         .add_systems(Startup, register_item_icon_materials);
 }
@@ -29,7 +29,7 @@ fn add_item_icon(
         Option<&mut MaterialNode<BlockIconMaterial>>,
         Option<&mut MaterialNode<ItemIconMaterial>>,
     )>,
-    registry: Res<ItemIconMaterialRegistry>,
+    registry: Res<ItemIconRegistry>,
     mut commands: Commands,
 ) {
     let entity = on.entity;
@@ -90,6 +90,12 @@ pub struct ItemIconMaterial {
     pub icon: Handle<Image>,
 }
 
+impl From<Handle<Image>> for ItemIconMaterial {
+    fn from(icon: Handle<Image>) -> Self {
+        Self { icon }
+    }
+}
+
 impl UiMaterial for ItemIconMaterial {
     fn fragment_shader() -> ShaderRef {
         "shaders/item_icon.wgsl".into()
@@ -110,12 +116,16 @@ impl UiMaterial for BlockIconMaterial {
 }
 
 #[derive(Resource, Default)]
-pub struct ItemIconMaterialRegistry {
+pub struct ItemIconRegistry {
     block_materials: HashMap<ItemId, Handle<BlockIconMaterial>>,
     item_materials: HashMap<ItemId, Handle<ItemIconMaterial>>,
 }
 
-impl ItemIconMaterialRegistry {
+impl ItemIconRegistry {
+    pub fn register_item(&mut self, item_id: ItemId, material: Handle<ItemIconMaterial>) {
+        self.item_materials.insert(item_id, material);
+    }
+
     pub fn get_block(&self, item_id: ItemId) -> Option<Handle<BlockIconMaterial>> {
         self.block_materials.get(&item_id).cloned()
     }
@@ -126,11 +136,9 @@ impl ItemIconMaterialRegistry {
 }
 
 fn register_item_icon_materials(
-    mut registry: ResMut<ItemIconMaterialRegistry>,
+    mut registry: ResMut<ItemIconRegistry>,
     mut block_icon_mats: ResMut<Assets<BlockIconMaterial>>,
-    mut item_icon_mats: ResMut<Assets<ItemIconMaterial>>,
     mut images: ResMut<Assets<Image>>,
-    asset_server: Res<AssetServer>,
 ) {
     let debug_tex = images.add(uv_debug_texture());
     registry.block_materials.insert(
@@ -143,12 +151,6 @@ fn register_item_icon_materials(
         ItemId(2),
         block_icon_mats.add(BlockIconMaterial {
             icon: debug_tex.clone(),
-        }),
-    );
-    registry.item_materials.insert(
-        ItemId(256),
-        item_icon_mats.add(ItemIconMaterial {
-            icon: asset_server.load("textures/items/dynamite.png"),
         }),
     );
 }

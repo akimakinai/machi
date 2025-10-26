@@ -8,6 +8,7 @@ use crate::{
             TimeLimitNode,
         },
         controller::{CharacterController, MovementEvent, MovementEventKind},
+        health::{Health, despawn_on_death},
         player::Player,
     },
     dev_util::{
@@ -30,7 +31,7 @@ impl Plugin for EnemyPlugin {
 }
 
 #[derive(Component, Clone)]
-#[require(Transform, Visibility)]
+#[require(Transform, Visibility, Health::new(100.0))]
 pub struct Enemy;
 
 fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -57,20 +58,22 @@ fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
         let position = Vec3::new(15.0 + i as f32 * 5.0, 20.0, 20.0 + i as f32 * 5.0);
         let mut enemy = commands.spawn((enemy_base.clone(), Transform::from_translation(position)));
         let id = enemy.id();
-        enemy.with_children(|parent| {
-            parent.spawn((
-                SequenceNode { repeat: true },
-                BehaviorTreeRoot::new(id),
-                ActiveNode,
-                children![
-                    (
-                        TimeLimitNode::from_seconds(10.0),
-                        children![(ChasePlayerAction)],
-                    ),
-                    (SleepAction::from_seconds(5.0)),
-                ],
-            ));
-        });
+        enemy
+            .with_children(|parent| {
+                parent.spawn((
+                    SequenceNode { repeat: true },
+                    BehaviorTreeRoot::new(id),
+                    ActiveNode,
+                    children![
+                        (
+                            TimeLimitNode::from_seconds(10.0),
+                            children![(ChasePlayerAction)],
+                        ),
+                        (SleepAction::from_seconds(5.0)),
+                    ],
+                ));
+            })
+            .observe(despawn_on_death);
 
         commands.spawn(debug_annot_ui(id));
     }

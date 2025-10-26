@@ -3,8 +3,9 @@ use bevy::prelude::*;
 
 use crate::{
     explosion::Explode,
-    item::{ItemId, ItemRegistry, ItemUse},
+    item::{Item, ItemId, ItemRegistry, ItemUse},
     physics::GameLayer,
+    ui::item_icon::{ItemIconMaterial, ItemIconRegistry},
 };
 
 pub fn plugin(app: &mut App) {
@@ -14,8 +15,23 @@ pub fn plugin(app: &mut App) {
 
 pub struct DynamiteItem;
 
-fn register_items(mut registry: ResMut<ItemRegistry>) {
-    registry.register_use::<DynamiteItem>(ItemId(256));
+impl Item for DynamiteItem {
+    const USABLE: bool = true;
+}
+
+fn register_items(
+    mut registry: ResMut<ItemRegistry>,
+    mut icon_registry: ResMut<ItemIconRegistry>,
+    mut item_icon_mats: ResMut<Assets<ItemIconMaterial>>,
+    asset_server: Res<AssetServer>,
+) {
+    registry.register_item::<DynamiteItem>(ItemId(256));
+    icon_registry.register_item(
+        ItemId(256),
+        item_icon_mats.add(ItemIconMaterial {
+            icon: asset_server.load("textures/items/dynamite.png"),
+        }),
+    );
 }
 
 #[derive(Component)]
@@ -80,7 +96,7 @@ fn on_dynamite_collision(
 
     let dynamite_pos = transforms.get(dynamite_id)?;
 
-    commands.trigger(Explode {
+    commands.write_message(Explode {
         position: dynamite_pos.translation(),
         radius: DYNAMITE_EXPLOSION_RADIUS,
     });

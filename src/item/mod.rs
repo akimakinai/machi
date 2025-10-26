@@ -1,3 +1,4 @@
+pub mod bone;
 pub mod dynamite;
 
 use std::marker::PhantomData;
@@ -9,7 +10,7 @@ pub struct ItemPlugin;
 impl Plugin for ItemPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ItemRegistry>();
-        app.add_plugins(dynamite::plugin);
+        app.add_plugins((bone::plugin, dynamite::plugin));
     }
 }
 
@@ -60,13 +61,19 @@ pub struct ItemRegistry {
     on_use: HashMap<ItemId, fn(&mut Commands, Entity)>,
 }
 
+/// ID type for items.
+pub trait Item: Sync + Send + 'static {
+    const USABLE: bool = false;
+}
+
 impl ItemRegistry {
-    // TODO: item trait?
-    pub fn register_use<T: Sync + Send + 'static>(&mut self, item_id: ItemId) {
-        self.on_use
-            .insert(item_id, |commands: &mut Commands, player: Entity| {
-                commands.trigger(ItemUse::<T>::new(player));
-            });
+    pub fn register_item<T: Item>(&mut self, item_id: ItemId) {
+        if T::USABLE {
+            self.on_use
+                .insert(item_id, |commands: &mut Commands, player: Entity| {
+                    commands.trigger(ItemUse::<T>::new(player));
+                });
+        }
     }
 
     pub fn use_item(&self, item_id: ItemId, commands: &mut Commands, player: Entity) {
