@@ -133,7 +133,27 @@ fn update_hotbar_active_slot(
     mut hotbars: Query<&mut Hotbar>,
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
+    time: Res<Time>,
+    mut cooldown: Local<Option<Timer>>,
 ) -> Result<()> {
+    let cooldown = cooldown.get_or_insert_with(|| {
+        let mut timer = Timer::from_seconds(0.2, TimerMode::Once);
+        timer.finish();
+        timer
+    });
+    cooldown.tick(time.delta());
+
+    let delta_y = scroll.delta.y;
+    if delta_y == 0.0 {
+        cooldown.finish();
+        return Ok(());
+    }
+    if cooldown.is_finished() {
+        cooldown.reset();
+    } else {
+        return Ok(());
+    }
+
     for mut hotbar in &mut hotbars {
         let hotbar_size = hotbar.size;
         if hotbar_size == 0 {
@@ -148,7 +168,6 @@ fn update_hotbar_active_slot(
             }
         }
 
-        let delta_y = scroll.delta.y;
         if delta_y > 0.0 {
             hotbar.active_slot = (hotbar.active_slot + hotbar_size - 1) % hotbar_size;
         } else if delta_y < 0.0 {
