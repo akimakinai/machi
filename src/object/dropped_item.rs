@@ -25,9 +25,7 @@ impl Plugin for DroppedItemPlugin {
 
 #[derive(Component)]
 #[require(Visibility, Transform)]
-pub struct DroppedItem {
-    item_stack: ItemStack,
-}
+pub struct DroppedItem;
 
 #[derive(Component)]
 struct ItemSensor;
@@ -96,7 +94,8 @@ pub fn dropped_item_bundle(item_stack: ItemStack) -> Result<impl Bundle> {
 
     Ok((
         Name::new(format!("DroppedItem ({:?})", item_stack)),
-        DroppedItem { item_stack },
+        DroppedItem,
+        item_stack,
         Sphere::new(0.2).collider(),
         CollisionLayers::new(
             [GameLayer::Object],
@@ -170,7 +169,7 @@ fn merge_items(
     mut commands: Commands,
     mut collision_started: MessageReader<CollisionStart>,
     merge_sensors: Query<&ChildOf, With<ItemSensor>>,
-    item_stack_objs: Query<(Entity, &DroppedItem)>,
+    dropped_items: Query<(Entity, &DroppedItem, &ItemStack)>,
     transforms: Query<&Transform>,
 ) -> Result<()> {
     let mut merged = EntityHashSet::default();
@@ -192,9 +191,9 @@ fn merge_items(
             continue;
         };
 
-        let [stack1, stack2] = item_stack_objs.get_many([parent1, parent2])?;
+        let [stack1, stack2] = dropped_items.get_many([parent1, parent2])?;
 
-        if stack1.1.item_stack.item_id != stack2.1.item_stack.item_id {
+        if stack1.2.item_id != stack2.2.item_id {
             continue;
         }
 
@@ -208,20 +207,19 @@ fn merge_items(
             .sum::<Vec3>()
             / 2.0;
 
-        let total_quantity = stack1.1.item_stack.quantity() + stack2.1.item_stack.quantity();
+        let total_quantity = stack1.2.quantity() + stack2.2.quantity();
         if total_quantity > ItemStack::MAX_QUANTITY {
-            commands.entity(stack1.0).insert(DroppedItem {
-                item_stack: ItemStack::new(stack1.1.item_stack.item_id, ItemStack::MAX_QUANTITY)?,
-            });
-            commands.entity(stack2.0).insert(DroppedItem {
-                item_stack: ItemStack::new(
-                    stack2.1.item_stack.item_id,
-                    total_quantity - ItemStack::MAX_QUANTITY,
-                )?,
-            });
+            commands.entity(stack1.0).insert((
+                DroppedItem,
+                ItemStack::new(stack1.2.item_id, ItemStack::MAX_QUANTITY)?,
+            ));
+            commands.entity(stack2.0).insert((
+                DroppedItem,
+                ItemStack::new(stack2.2.item_id, total_quantity - ItemStack::MAX_QUANTITY)?,
+            ));
             continue;
         }
-        let merged_item_stack = ItemStack::new(stack1.1.item_stack.item_id, total_quantity)?;
+        let merged_item_stack = ItemStack::new(stack1.2.item_id, total_quantity)?;
         commands.entity(stack1.0).despawn();
         commands.entity(stack2.0).despawn();
 
@@ -241,7 +239,7 @@ pub struct PickupItems;
 fn pickup_items(
     chars: Query<&Children, With<PickupItems>>,
     mut inventories: Query<&mut Inventory>,
-    item_objs: Query<(&DroppedItem, &Transform)>,
+    item_objs: Query<(&ItemStack, &Transform), With<DroppedItem>>,
     item_sensors: Query<&ChildOf, With<ItemSensor>>,
     mut collision_started: MessageReader<CollisionStart>,
     mut commands: Commands,
@@ -265,7 +263,7 @@ fn pickup_items(
             continue;
         };
 
-        let (item_obj, item_transform) = item_objs.get(item_id)?;
+        let (item_stack, item_transform) = item_objs.get(item_id)?;
 
         let inventory = player_children
             .iter()
@@ -273,8 +271,8 @@ fn pickup_items(
             .ok_or("Player has no inventory")?;
         let mut inventory = inventories.get_mut(inventory)?;
 
-        if let Err(remaining) = inventory.add_item_stack(item_obj.item_stack) {
-            if remaining.quantity() == item_obj.item_stack.quantity() {
+        if let Err(remaining) = inventory.add_item_stack(*item_stack) {
+            if remaining.quantity() == item_stack.quantity() {
                 continue;
             }
 
