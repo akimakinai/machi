@@ -238,7 +238,7 @@ pub struct PickupItems;
 
 fn pickup_items(
     chars: Query<&Children, With<PickupItems>>,
-    mut inventories: Query<&mut Inventory>,
+    inventories: Query<(), With<Inventory>>,
     item_objs: Query<(&ItemStack, &Transform), With<DroppedItem>>,
     item_sensors: Query<&ChildOf, With<ItemSensor>>,
     mut collision_started: MessageReader<CollisionStart>,
@@ -263,27 +263,28 @@ fn pickup_items(
             continue;
         };
 
-        let (item_stack, item_transform) = item_objs.get(item_id)?;
+        let (&item_stack, item_transform) = item_objs.get(item_id)?;
 
         let inventory = player_children
             .iter()
             .find(|&c| inventories.contains(c))
             .ok_or("Player has no inventory")?;
-        let mut inventory = inventories.get_mut(inventory)?;
 
-        if let Err(remaining) = inventory.add_item_stack(*item_stack) {
-            if remaining.quantity() == item_stack.quantity() {
-                continue;
-            }
-
-            commands.spawn((
-                dropped_item_bundle(remaining)?,
-                Transform::from_translation(item_transform.translation),
-            ));
-        }
-
-        commands.entity(item_id).despawn();
-        // debug!("Despawned item {:?}", item_id);
+        let item_translation = item_transform.translation;
+        commands.queue(Inventory::add_item_stack(
+            inventory,
+            item_stack,
+            move |world: &mut World| {
+                world.entity_mut(item_id).despawn();
+            },
+            move |world, remaining| {
+                world.entity_mut(item_id).despawn();
+                world.spawn((
+                    dropped_item_bundle(remaining).unwrap(),
+                    Transform::from_translation(item_translation),
+                ));
+            },
+        ));
     }
 
     Ok(())

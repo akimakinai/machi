@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::{inventory::Inventory, ui::item_icon::ItemIconNode};
+use crate::{inventory::Inventory, item::ItemStack, ui::item_icon::ItemIconNode};
 
 pub struct InventoryUiPlugin;
 
@@ -32,7 +32,7 @@ pub struct InventoryUiRoot {
 }
 
 #[derive(Component)]
-struct InventoryUiSlot(usize);
+struct InventoryUiSlot(u32);
 
 #[derive(Component)]
 struct SlotBlockIcon;
@@ -100,7 +100,7 @@ pub fn build_inventory_root(
                     },
                 ))
                 .with_children(|grid| {
-                    for i in 0..data.slots.len() {
+                    for i in 0..data.size {
                         let mut slot = grid.spawn((
                             Name::new(format!("Slot {}", i)),
                             InventoryUiSlot(i),
@@ -117,7 +117,7 @@ pub fn build_inventory_root(
                         ));
                         slot.with_children(|slot| {
                             slot.spawn((
-                                ItemIconNode(data.slots[i].as_ref().map(|is| is.item_id)),
+                                ItemIconNode(None),
                                 Node {
                                     position_type: PositionType::Absolute,
                                     top: Val::Px(0.0),
@@ -179,48 +179,54 @@ fn inventory_toggle(
 }
 
 fn update_inventory_slots(
-    roots: Query<(Entity, Ref<InventoryUiRoot>)>,
-    slots: Query<&InventoryUiSlot>,
-    inventories: Query<Ref<Inventory>>,
-    children: Query<&Children>,
-    item_icon: Query<&ItemIconNode>,
-    mut texts: Query<&mut Text>,
-    mut block_icons: Query<&mut Visibility, With<SlotBlockIcon>>,
+    q_root: Query<(Entity, Ref<InventoryUiRoot>)>,
+    q_slot: Query<&InventoryUiSlot>,
+    q_inventory: Query<Ref<Children>, With<Inventory>>,
+    q_children: Query<&Children>,
+    q_item: Query<&ItemStack>,
+    q_item_icon: Query<&ItemIconNode>,
+    mut q_text: Query<&mut Text>,
+    mut q_block_icon: Query<&mut Visibility, With<SlotBlockIcon>>,
     mut commands: Commands,
 ) -> Result<()> {
-    for (root_id, root) in &roots {
-        let inventory = inventories.get(root.inventory)?;
+    for (root_id, root) in &q_root {
+        let inventory = q_inventory.get(root.inventory)?;
         if !root.is_added() && !inventory.is_changed() {
             continue;
         }
 
-        for child in children.iter_descendants(root_id) {
-            let Ok(slot) = slots.get(child) else {
+        for child in q_children.iter_descendants(root_id) {
+            let Ok(slot) = q_slot.get(child) else {
                 continue;
             };
 
-            for schild in children.get(child)?.iter() {
-                if let Ok(item_icon) = item_icon.get(schild) {
-                    let maybe_item_id = inventory.slots[slot.0].as_ref().map(|is| is.item_id);
+            for schild in q_children.get(child)?.iter() {
+                let item_stack_id = q_children.get(root.inventory)?.get(slot.0 as usize);
+                let maybe_item = if let Some(&item_stack_id) = item_stack_id {
+                    Some(q_item.get(item_stack_id)?)
+                } else {
+                    None
+                };
+
+                if let Ok(item_icon) = q_item_icon.get(schild) {
+                    let maybe_item_id = maybe_item.map(|is| is.item_id);
                     if item_icon.0 != maybe_item_id {
                         commands.entity(schild).insert(ItemIconNode(maybe_item_id));
                     }
                 }
-                if let Ok(mut text) = texts.get_mut(schild) {
-                    text.0 = inventory.slots[slot.0]
-                        .as_ref()
+
+                if let Ok(mut text) = q_text.get_mut(schild) {
+                    text.0 = maybe_item
                         .map(|s| s.quantity().to_string())
                         .unwrap_or_default();
                 }
-            }
-            for schild in children.get(child)?.iter() {
-                if let Ok(mut visibility) = block_icons.get_mut(schild) {
-                    if inventory.slots[slot.0].is_some() {
+
+                if let Ok(mut visibility) = q_block_icon.get_mut(schild) {
+                    if maybe_item.is_some() {
                         visibility.set_if_neq(Visibility::Visible);
                     } else {
                         visibility.set_if_neq(Visibility::Hidden);
                     }
-                    break;
                 }
             }
         }

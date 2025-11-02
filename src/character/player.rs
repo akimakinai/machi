@@ -9,7 +9,7 @@ use crate::{
         health::Health,
     },
     inventory::Inventory,
-    item::ItemRegistry,
+    item::{ItemRegistry, ItemStack},
     object::dropped_item::PickupItems,
     pause::PausableSystems,
     ui::hotbar::Hotbar,
@@ -135,13 +135,14 @@ fn player_camera_control(
 /// Running this system uses the item in the currently selected hotbar slot.
 fn use_selected_hotbar_item(
     hotbars: Query<&Hotbar>,
-    mut inventories: Query<(&mut Inventory, Option<&ChildOf>)>,
+    inventories: Query<(&Children, Option<&ChildOf>), With<Inventory>>,
+    mut item_stacks: Query<&mut ItemStack>,
     players: Query<(), With<Player>>,
     registry: Res<ItemRegistry>,
     mut commands: Commands,
 ) -> Result<()> {
     for hotbar in &hotbars {
-        let Ok((mut inventory, parent)) = inventories.get_mut(hotbar.inventory) else {
+        let Ok((inventory, parent)) = inventories.get(hotbar.inventory) else {
             continue;
         };
 
@@ -154,16 +155,19 @@ fn use_selected_hotbar_item(
         }
 
         let slot_idx = hotbar.active_slot as usize;
-        let Some(Some(stack)) = inventory.slots.get_mut(slot_idx) else {
+        let Some(&stack_id) = inventory.get(slot_idx) else {
+            continue;
+        };
+        let Ok(mut stack) = item_stacks.get_mut(stack_id) else {
             continue;
         };
 
         if registry.use_item(stack.item_id, &mut commands, owner) {
             if stack.quantity() == 1 {
-                inventory.slots[slot_idx] = None;
+                commands.entity(stack_id).despawn();
                 debug!("Used up item stack in hotbar slot {}", slot_idx);
             } else {
-                stack.set_quantity(stack.quantity() - 1)?;
+                stack.decrease_quantity(1)?;
             }
         }
 

@@ -38,7 +38,7 @@ use crate::{
         edit::EditPlugin,
         render::RenderPlugin,
     },
-    ui::UiPlugin,
+    ui::{UiPlugin, hotbar::Hotbar},
 };
 
 mod character;
@@ -52,7 +52,7 @@ mod physics;
 mod terrain;
 mod ui;
 
-const PLAYER_INVENTORY_SIZE: usize = 36;
+const PLAYER_INVENTORY_SIZE: u32 = 36;
 
 fn main() {
     App::new()
@@ -196,24 +196,36 @@ fn spawn_player(
         })
         .id();
 
-    let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
-    slots[0] = ItemStack::new(ItemId(1), 64).unwrap().into();
-    slots[1] = ItemStack::new(ItemId(2), 32).unwrap().into();
-    slots[2] = ItemStack::new(ItemId(256), 16).unwrap().into();
+    // let mut slots = vec![None; PLAYER_INVENTORY_SIZE];
+    // slots[0] = ItemStack::new(ItemId(1), 64).unwrap().into();
+    // slots[1] = ItemStack::new(ItemId(2), 32).unwrap().into();
+    // slots[2] = ItemStack::new(ItemId(256), 16).unwrap().into();
     let inventory_id = commands
         .spawn((
             Name::new("Player Inventory Data"),
             Inventory {
-                slots,
-                hotbar: Some(9),
+                size: PLAYER_INVENTORY_SIZE,
             },
             ChildOf(player_id),
         ))
         .id();
 
+    commands.spawn((
+        ItemStack::new(ItemId(1), 64).unwrap(),
+        ChildOf(inventory_id),
+    ));
+    commands.spawn((
+        ItemStack::new(ItemId(2), 32).unwrap(),
+        ChildOf(inventory_id),
+    ));
+    commands.spawn((
+        ItemStack::new(ItemId(256), 16).unwrap(),
+        ChildOf(inventory_id),
+    ));
+
     commands.run_system_cached_with(ui::inventory::build_inventory_root, inventory_id);
 
-    commands.run_system_cached_with(ui::hotbar::build_hotbar, inventory_id);
+    commands.run_system_cached_with(ui::hotbar::build_hotbar, Hotbar::new(inventory_id, 9));
 }
 
 fn mouse_grabbing(

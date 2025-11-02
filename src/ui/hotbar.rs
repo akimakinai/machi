@@ -1,6 +1,6 @@
 use bevy::{ecs::relationship::RelatedSpawner, input::mouse::AccumulatedMouseScroll, prelude::*};
 
-use crate::{inventory::Inventory, ui::item_icon::ItemIconNode};
+use crate::{inventory::Inventory, item::ItemStack, ui::item_icon::ItemIconNode};
 
 pub struct HotbarPlugin;
 
@@ -15,25 +15,23 @@ impl Plugin for HotbarPlugin {
 pub struct Hotbar {
     pub inventory: Entity,
     pub active_slot: u8,
+    pub size: u8,
 }
 
 impl Hotbar {
-    fn new(inventory: Entity) -> Self {
+    pub fn new(inventory: Entity, size: u8) -> Self {
         Self {
             inventory,
             active_slot: 0,
+            size,
         }
     }
 }
-pub fn build_hotbar(
-    In(inventory_id): In<Entity>,
-    inventories: Query<&Inventory>,
-    mut commands: Commands,
-) -> Result<()> {
-    let hotbar_num = inventories.get(inventory_id)?.hotbar.unwrap_or(0);
+pub fn build_hotbar(In(hotbar): In<Hotbar>, mut commands: Commands) -> Result<()> {
+    let hotbar_size = hotbar.size;
     commands.spawn((
         Name::new("Hotbar UI"),
-        Hotbar::new(inventory_id),
+        hotbar,
         Node {
             width: percent(80.0),
             height: px(50.0),
@@ -44,7 +42,7 @@ pub fn build_hotbar(
             ..default()
         },
         Children::spawn(SpawnWith(move |parent: &mut RelatedSpawner<ChildOf>| {
-            for i in 0..hotbar_num {
+            for i in 0..hotbar_size {
                 parent
                     .spawn((
                         ItemIconNode(None),
@@ -82,21 +80,20 @@ pub fn build_hotbar(
 
 fn update_hotbar(
     hotbars: Query<(&Hotbar, &Children)>,
-    inventories: Query<&Inventory>,
+    inventories: Query<&Children, With<Inventory>>,
+    items: Query<&ItemStack>,
     mut item_icons: Query<(Entity, &ItemIconNode, &mut BorderColor)>,
-    children: Query<&Children>,
+    q_children: Query<&Children>,
     mut texts: Query<&mut Text>,
     mut commands: Commands,
 ) -> Result<()> {
     for (hotbar, hotbar_children) in hotbars.iter() {
-        let Ok(inventory) = inventories.get(hotbar.inventory) else {
+        let Ok(children) = inventories.get(hotbar.inventory) else {
             continue;
         };
 
         for (i, child) in hotbar_children.iter().enumerate() {
-            if let Some(num) = inventory.hotbar {
-                assert!(i < num as usize);
-            }
+            assert!(i < hotbar.size as usize);
 
             let (item_icon_id, item_icon, mut border_color) = item_icons.get_mut(child)?;
 
@@ -106,19 +103,17 @@ fn update_hotbar(
                 border_color.set_if_neq(BorderColor::all(Color::WHITE));
             }
 
-            let Some(slot) = inventory.slots.get(i) else {
-                error!(?inventory, "Hotbar slot {} out of bounds", i);
-                continue;
-            };
+            let slot = children.get(i);
+            let item_stack = slot.map(|&s| items.get(s)).transpose()?;
 
-            let item_id = slot.as_ref().map(|is| is.item_id);
-            let item_num = slot.as_ref().map(|is| is.quantity()).unwrap_or(0);
+            let item_id = item_stack.map(|is| is.item_id);
+            let item_num = item_stack.map(|is| is.quantity()).unwrap_or(0);
 
             if item_icon.0 != item_id {
                 commands.entity(child).insert(ItemIconNode(item_id));
             }
 
-            for id in children.iter_leaves(item_icon_id) {
+            for id in q_children.iter_leaves(item_icon_id) {
                 if let Ok(mut text_entity) = texts.get_mut(id) {
                     text_entity.0 = if item_num > 1 {
                         item_num.to_string()
@@ -136,12 +131,11 @@ fn update_hotbar(
 
 fn update_hotbar_active_slot(
     mut hotbars: Query<&mut Hotbar>,
-    inventories: Query<&Inventory>,
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
 ) -> Result<()> {
     for mut hotbar in &mut hotbars {
-        let hotbar_size = inventories.get(hotbar.inventory)?.hotbar.unwrap_or(0) as u8;
+        let hotbar_size = hotbar.size;
         if hotbar_size == 0 {
             continue;
         }

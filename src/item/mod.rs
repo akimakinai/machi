@@ -52,6 +52,17 @@ impl ItemStack {
         self.quantity
     }
 
+    pub fn decrease_quantity(&mut self, amount: u32) -> Result<()> {
+        if amount == 0 {
+            return Ok(());
+        }
+        if amount > self.quantity {
+            return Err("Cannot decrease ItemStack quantity by the specified amount".into());
+        }
+        self.quantity -= amount;
+        Ok(())
+    }
+
     pub fn set_quantity(&mut self, quantity: u32) -> Result<()> {
         if quantity == 0 || quantity > Self::MAX_QUANTITY {
             return Err("ItemStack quantity must be between 1 and MAX_QUANTITY".into());
