@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use crate::{
     explosion::Explode,
     item::{
-        ItemKind,
+        item_core::ItemKind,
         item_icon::ItemIcon,
         item_use::{ConsumeOnUse, ItemUse, UsableItem},
     },

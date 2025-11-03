@@ -8,7 +8,11 @@ use bevy::{
 use crate::{
     helper::CommandExt as _,
     inventory::Inventory,
-    item::{BlockItem, ItemId, ItemIndex, ItemStack, item_icon::ItemIcon},
+    item::{
+        defs::block::BlockItem,
+        item_core::{ItemId, ItemIndex, ItemStack},
+        item_icon::ItemIcon,
+    },
     pause::PausableSystems,
     physics::GameLayer,
     startup::StartupSystems,

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::item::ItemStack;
+use crate::item::item_core::ItemStack;
 
 #[derive(Component, Debug, Clone)]
 pub struct Inventory {

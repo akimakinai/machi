@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::{
     character::health::{Health, deal_damage},
-    item::ItemStack,
+    item::item_core::ItemStack,
     object::dropped_item::dropped_item_bundle,
     terrain::chunk::{BlockIdMap, WriteBlocks},
 };

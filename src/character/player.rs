@@ -9,7 +9,10 @@ use crate::{
         health::Health,
     },
     inventory::Inventory,
-    item::{ItemKind, ItemStack, item_use::ItemUse},
+    item::{
+        item_core::{ItemKind, ItemStack},
+        item_use::ItemUse,
+    },
     object::dropped_item::PickupItems,
     pause::PausableSystems,
     ui::hotbar::Hotbar,

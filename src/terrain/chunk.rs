@@ -13,7 +13,7 @@ use bevy::{
 
 use crate::{
     PlayerCamera,
-    item::{ItemId, ItemIndex, register_item_kinds},
+    item::item_core::{ItemId, ItemIndex, register_item_kinds},
     startup::StartupSystems,
 };
 

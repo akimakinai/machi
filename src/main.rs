@@ -29,7 +29,11 @@ use crate::{
     },
     explosion::ExplosionPlugin,
     inventory::Inventory,
-    item::{BlockItem, ItemIndex, ItemKind, ItemPlugin, ItemStack},
+    item::{
+        ItemPlugin,
+        defs::block::BlockItem,
+        item_core::{ItemIndex, ItemKind, ItemStack},
+    },
     object::ObjectPlugin,
     pause::{Pause, PausePlugin},
     physics::GameLayer,

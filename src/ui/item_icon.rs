@@ -7,7 +7,11 @@ use bevy::{
 };
 
 use crate::{
-    item::{BlockItem, ItemId, ItemIndex, item_icon::ItemIcon},
+    item::{
+        defs::block::BlockItem,
+        item_core::{ItemId, ItemIndex},
+        item_icon::ItemIcon,
+    },
     startup::StartupSystems,
 };
 

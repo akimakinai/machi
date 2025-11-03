@@ -1,6 +1,6 @@
 use bevy::{ecs::relationship::RelatedSpawner, input::mouse::AccumulatedMouseScroll, prelude::*};
 
-use crate::{inventory::Inventory, item::ItemStack, ui::item_icon::ItemIconNode};
+use crate::{inventory::Inventory, item::item_core::ItemStack, ui::item_icon::ItemIconNode};
 
 pub struct HotbarPlugin;
 

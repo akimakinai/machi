@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::{
-    item::{ItemKind, item_icon::ItemIcon},
+    item::{item_core::ItemKind, item_icon::ItemIcon},
     startup::StartupSystems,
 };
 

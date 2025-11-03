@@ -18,7 +18,7 @@ use crate::{
         debug_annotation::{debug_annot_ui, target::AnnotTargetAabb},
         mesh_alpha::OverwriteAlpha,
     },
-    item::{ItemIndex, ItemStack},
+    item::item_core::{ItemIndex, ItemStack},
     object::dropped_item::dropped_item_bundle,
     physics::GameLayer,
     startup::StartupSystems,

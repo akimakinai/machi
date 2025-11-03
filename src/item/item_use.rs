@@ -3,7 +3,7 @@ use bevy::{
     prelude::*,
 };
 
-use crate::item::ItemStack;
+use crate::item::item_core::ItemStack;
 
 /// Marker component for items that can be used.
 /// Observe [`ItemUse`] events on [`ItemKind`] entity to handle item usage.
