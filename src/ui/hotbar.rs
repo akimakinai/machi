@@ -136,22 +136,20 @@ fn update_hotbar_active_slot(
     time: Res<Time>,
     mut cooldown: Local<Option<Timer>>,
 ) -> Result<()> {
+    let mut ignore_wheel = false;
+
     let cooldown = cooldown.get_or_insert_with(|| {
-        let mut timer = Timer::from_seconds(0.2, TimerMode::Once);
+        let mut timer = Timer::from_seconds(0.1, TimerMode::Once);
         timer.finish();
         timer
     });
     cooldown.tick(time.delta());
 
     let delta_y = scroll.delta.y;
-    if delta_y == 0.0 {
-        cooldown.finish();
-        return Ok(());
-    }
-    if cooldown.is_finished() {
+    if cooldown.is_finished() && delta_y != 0.0 {
         cooldown.reset();
     } else {
-        return Ok(());
+        ignore_wheel = true;
     }
 
     for mut hotbar in &mut hotbars {
@@ -168,6 +166,9 @@ fn update_hotbar_active_slot(
             }
         }
 
+        if ignore_wheel {
+            continue;
+        }
         if delta_y > 0.0 {
             hotbar.active_slot = (hotbar.active_slot + hotbar_size - 1) % hotbar_size;
         } else if delta_y < 0.0 {
