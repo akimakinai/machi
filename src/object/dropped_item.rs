@@ -18,13 +18,14 @@ pub struct DroppedItemPlugin;
 
 impl Plugin for DroppedItemPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Startup,
-            setup_assets.in_set(StartupSystems::PostRegisterItems),
-        )
-        .add_observer(add_item_texture)
-        .add_systems(Update, (merge_items, pickup_items).in_set(PausableSystems))
-        .add_systems(Update, animate_dropped_items.in_set(PausableSystems));
+        app.init_resource::<DroppedItemAssets>()
+            .add_systems(
+                Startup,
+                setup_assets.in_set(StartupSystems::PostRegisterItems),
+            )
+            .add_observer(add_item_texture)
+            .add_systems(Update, (merge_items, pickup_items).in_set(PausableSystems))
+            .add_systems(Update, animate_dropped_items.in_set(PausableSystems));
     }
 }
 
@@ -116,7 +117,7 @@ pub fn dropped_item_bundle(item_stack: ItemStack) -> Result<impl Bundle> {
     ))
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct DroppedItemAssets {
     // TODO: mesh should also be a HashMap
     block_mesh: Handle<Mesh>,
@@ -128,32 +129,26 @@ fn setup_assets(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     item_index: Res<ItemIndex>,
-    mut commands: Commands,
+    mut dropped_item_assets: ResMut<DroppedItemAssets>,
 ) {
-    let block_mesh = meshes.add(Mesh::from(Cuboid::from_length(0.2)));
-    let item_mesh = meshes.add(Mesh::from(Plane3d::new(-Vec3::Z, Vec2::splat(0.2))));
+    dropped_item_assets.block_mesh = meshes.add(Mesh::from(Cuboid::from_length(0.2)));
+    dropped_item_assets.item_mesh =
+        meshes.add(Mesh::from(Plane3d::new(-Vec3::Z, Vec2::splat(0.2))));
 
-    let mut material_map = HashMap::new();
-    material_map.insert(
+    dropped_item_assets.material_map.insert(
         item_index.get("grass").unwrap(),
         materials.add(StandardMaterial {
             base_color: Color::srgb(0.0, 1.0, 0.0),
             ..default()
         }),
     );
-    material_map.insert(
+    dropped_item_assets.material_map.insert(
         item_index.get("dirt").unwrap(),
         materials.add(StandardMaterial {
             base_color: Color::srgb(0.5, 0.5, 0.5),
             ..default()
         }),
     );
-
-    commands.insert_resource(DroppedItemAssets {
-        block_mesh,
-        item_mesh,
-        material_map,
-    });
 }
 
 fn add_item_texture(
@@ -163,6 +158,7 @@ fn add_item_texture(
     mut sm: ResMut<Assets<StandardMaterial>>,
 ) -> Result {
     let item_id = on.event().entity;
+    debug!("Adding item texture for item {:?}", item_id);
     let (item_id, image) = q_item_icon.get(item_id)?;
     let material = StandardMaterial {
         base_color_texture: Some(image.0.clone()),
