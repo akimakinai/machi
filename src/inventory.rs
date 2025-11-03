@@ -8,13 +8,8 @@ pub struct Inventory {
 }
 
 impl Inventory {
-    /// Returns `Err(remaining)` if there is not enough space.
-    pub fn add_item_stack(
-        inventory: Entity,
-        item_stack: ItemStack,
-        on_success: impl Fn(&mut World) + Send + 'static,
-        on_remaining: impl Fn(&mut World, ItemStack) + Send + 'static,
-    ) -> impl Command<Result> {
+    /// Returns `Ok(remaining)` where `remaining` is the number of items that could not be added.
+    pub fn add_item_stack(inventory: Entity, item_stack: ItemStack) -> impl Command<Result<u32>> {
         move |world: &mut World| {
             let children = world
                 .get::<Children>(inventory)
@@ -39,8 +34,7 @@ impl Inventory {
                 }
             }
             if remaining == 0 {
-                on_success(world);
-                return Ok(());
+                return Ok(0);
             }
 
             let inventory_size = world
@@ -55,19 +49,10 @@ impl Inventory {
                     ItemStack::new(item_stack.item_id, remaining).unwrap(),
                     ChildOf(inventory),
                 ));
-                on_success(world);
-                return Ok(());
+                return Ok(0);
             }
 
-            if remaining > 0 {
-                on_remaining(
-                    world,
-                    ItemStack::new(item_stack.item_id, remaining).unwrap(),
-                )
-            } else {
-                on_success(world);
-            }
-            Ok(())
+            Ok(remaining)
         }
     }
 }

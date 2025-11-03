@@ -6,6 +6,7 @@ use bevy::{
 };
 
 use crate::{
+    helper::CommandExt as _,
     inventory::Inventory,
     item::{ItemId, ItemImagesAdded, ItemRegistry, ItemStack},
     pause::PausableSystems,
@@ -271,18 +272,26 @@ fn pickup_items(
             .ok_or("Player has no inventory")?;
 
         let item_translation = item_transform.translation;
-        commands.queue(Inventory::add_item_stack(
-            inventory,
-            item_stack,
-            move |world: &mut World| {
+
+        commands.queue(Inventory::add_item_stack(inventory, item_stack).pipe(
+            move |In(res), world| {
                 world.entity_mut(item_id).despawn();
-            },
-            move |world, remaining| {
-                world.entity_mut(item_id).despawn();
-                world.spawn((
-                    dropped_item_bundle(remaining).unwrap(),
-                    Transform::from_translation(item_translation),
-                ));
+
+                match res {
+                    Ok(remaining) => {
+                        if remaining > 0 {
+                            world.spawn((
+                                dropped_item_bundle(
+                                    ItemStack::new(item_stack.item_id, remaining).unwrap(),
+                                )
+                                .unwrap(),
+                                Transform::from_translation(item_translation),
+                            ));
+                        }
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                }
             },
         ));
     }
