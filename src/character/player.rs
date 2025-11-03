@@ -9,7 +9,7 @@ use crate::{
         health::Health,
     },
     inventory::Inventory,
-    item::{ItemRegistry, ItemStack},
+    item::{ItemKind, ItemStack, item_use::ItemUse},
     object::dropped_item::PickupItems,
     pause::PausableSystems,
     ui::hotbar::Hotbar,
@@ -138,7 +138,7 @@ fn use_selected_hotbar_item(
     inventories: Query<(&Children, Option<&ChildOf>), With<Inventory>>,
     mut item_stacks: Query<&mut ItemStack>,
     players: Query<(), With<Player>>,
-    registry: Res<ItemRegistry>,
+    q_item: Query<&ItemKind>,
     mut commands: Commands,
 ) -> Result<()> {
     for hotbar in &hotbars {
@@ -158,20 +158,17 @@ fn use_selected_hotbar_item(
         let Some(&stack_id) = inventory.get(slot_idx) else {
             continue;
         };
-        let Ok(mut stack) = item_stacks.get_mut(stack_id) else {
+        let Ok(stack) = item_stacks.get_mut(stack_id) else {
             continue;
         };
 
-        if registry.use_item(stack.item_id, &mut commands, owner) {
-            if stack.quantity() == 1 {
-                commands.entity(stack_id).despawn();
-                debug!("Used up item stack in hotbar slot {}", slot_idx);
-            } else {
-                stack.decrease_quantity(1)?;
-            }
-        }
+        let item = q_item.get(*stack.item_id)?;
 
-        // we should make item stack an entity probably
+        debug!("Using item: {:?}", item.0);
+
+        commands
+            .entity(stack.item_id.entity())
+            .trigger(ItemUse::new(owner, stack_id));
     }
 
     Ok(())

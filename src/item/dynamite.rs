@@ -3,26 +3,31 @@ use bevy::prelude::*;
 
 use crate::{
     explosion::Explode,
-    item::{Item, ItemId, ItemRegistry, ItemUse},
+    item::{
+        ItemKind,
+        item_icon::ItemIcon,
+        item_use::{ConsumeOnUse, ItemUse, UsableItem},
+    },
     physics::GameLayer,
+    startup::StartupSystems,
 };
 
 pub fn plugin(app: &mut App) {
-    app.add_observer(on_use_dynamite)
-        .add_systems(Startup, register_items);
-}
-
-pub struct DynamiteItem;
-
-impl Item for DynamiteItem {
-    const USABLE: bool = true;
-}
-
-fn register_items(mut registry: ResMut<ItemRegistry>, asset_server: Res<AssetServer>) {
-    registry.register_item::<DynamiteItem>(
-        ItemId(256),
-        asset_server.load("textures/items/dynamite.png"),
+    app.add_systems(
+        Startup,
+        register_dynamite.in_set(StartupSystems::RegisterItems),
     );
+}
+
+fn register_dynamite(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands
+        .spawn((
+            ItemKind::new("dynamite"),
+            ItemIcon(asset_server.load("textures/items/dynamite.png")),
+            UsableItem,
+            ConsumeOnUse,
+        ))
+        .observe(on_use_dynamite);
 }
 
 #[derive(Component, Default)]
@@ -35,7 +40,7 @@ const DYNAMITE_SPAWN_OFFSET: f32 = 0.5;
 const DYNAMITE_EXPLOSION_RADIUS: f32 = 8.0;
 
 fn on_use_dynamite(
-    on: On<ItemUse<DynamiteItem>>,
+    on: On<ItemUse>,
     mut commands: Commands,
     transforms: Query<&GlobalTransform>,
     mut meshes: ResMut<Assets<Mesh>>,

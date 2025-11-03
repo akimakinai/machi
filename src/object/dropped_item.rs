@@ -8,19 +8,23 @@ use bevy::{
 use crate::{
     helper::CommandExt as _,
     inventory::Inventory,
-    item::{ItemId, ItemImagesAdded, ItemRegistry, ItemStack},
+    item::{BlockItem, ItemId, ItemIndex, ItemStack, item_icon::ItemIcon},
     pause::PausableSystems,
     physics::GameLayer,
+    startup::StartupSystems,
 };
 
 pub struct DroppedItemPlugin;
 
 impl Plugin for DroppedItemPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<DroppedItemAssets>()
-            .add_observer(add_item_texture)
-            .add_systems(Update, (merge_items, pickup_items).in_set(PausableSystems))
-            .add_systems(Update, animate_dropped_items.in_set(PausableSystems));
+        app.add_systems(
+            Startup,
+            setup_assets.in_set(StartupSystems::PostRegisterItems),
+        )
+        .add_observer(add_item_texture)
+        .add_systems(Update, (merge_items, pickup_items).in_set(PausableSystems))
+        .add_systems(Update, animate_dropped_items.in_set(PausableSystems));
     }
 }
 
@@ -41,8 +45,14 @@ pub fn dropped_item_bundle(item_stack: ItemStack) -> Result<impl Bundle> {
     let num_cubes = (item_stack.quantity() as f32).log2().ceil() as u32 + 1;
 
     // Visual representation of the dropped item
-    let visual_spawner = if item_id.is_block() {
-        Box::new(move |parent: &mut RelatedSpawner<ChildOf>| {
+    let visual_spawner = move |parent: &mut RelatedSpawner<ChildOf>| {
+        let Ok(item_kind) = parent.world().get_entity(item_id.entity()) else {
+            error!("Item kind {:?} not found", item_id.entity());
+            return;
+        };
+        let is_block = item_kind.contains::<BlockItem>();
+
+        if is_block {
             let assets = parent.world().resource::<DroppedItemAssets>();
             let cloned_mesh = assets.block_mesh.clone();
             let cloned_material = assets
@@ -63,9 +73,7 @@ pub fn dropped_item_bundle(item_stack: ItemStack) -> Result<impl Bundle> {
                     MeshMaterial3d(cloned_material.clone()),
                 ));
             }
-        }) as Box<dyn Fn(&mut RelatedSpawner<ChildOf>) + Send + Sync>
-    } else {
-        Box::new(move |parent: &mut RelatedSpawner<ChildOf>| {
+        } else {
             let assets = parent.world().resource::<DroppedItemAssets>();
             parent.spawn((
                 Mesh3d(assets.item_mesh.clone()),
@@ -77,7 +85,7 @@ pub fn dropped_item_bundle(item_stack: ItemStack) -> Result<impl Bundle> {
                         .unwrap_or_default(),
                 ),
             ));
-        })
+        }
     };
 
     // Sensor to detect collisions for merging and pickup
@@ -116,54 +124,55 @@ pub struct DroppedItemAssets {
     material_map: HashMap<ItemId, Handle<StandardMaterial>>,
 }
 
-impl FromWorld for DroppedItemAssets {
-    fn from_world(world: &mut World) -> Self {
-        let mut meshes = world.resource_mut::<Assets<Mesh>>();
-        let block_mesh = meshes.add(Mesh::from(Cuboid::from_length(0.2)));
-        let item_mesh = meshes.add(Mesh::from(Plane3d::new(-Vec3::Z, Vec2::splat(0.2))));
+fn setup_assets(
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    item_index: Res<ItemIndex>,
+    mut commands: Commands,
+) {
+    let block_mesh = meshes.add(Mesh::from(Cuboid::from_length(0.2)));
+    let item_mesh = meshes.add(Mesh::from(Plane3d::new(-Vec3::Z, Vec2::splat(0.2))));
 
-        let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
-        let mut material_map = HashMap::new();
-        material_map.insert(
-            ItemId(1),
-            materials.add(StandardMaterial {
-                base_color: Color::srgb(0.0, 1.0, 0.0),
-                ..default()
-            }),
-        );
-        material_map.insert(
-            ItemId(2),
-            materials.add(StandardMaterial {
-                base_color: Color::srgb(0.5, 0.5, 0.5),
-                ..default()
-            }),
-        );
+    let mut material_map = HashMap::new();
+    material_map.insert(
+        item_index.get("grass").unwrap(),
+        materials.add(StandardMaterial {
+            base_color: Color::srgb(0.0, 1.0, 0.0),
+            ..default()
+        }),
+    );
+    material_map.insert(
+        item_index.get("dirt").unwrap(),
+        materials.add(StandardMaterial {
+            base_color: Color::srgb(0.5, 0.5, 0.5),
+            ..default()
+        }),
+    );
 
-        DroppedItemAssets {
-            block_mesh,
-            item_mesh,
-            material_map,
-        }
-    }
+    commands.insert_resource(DroppedItemAssets {
+        block_mesh,
+        item_mesh,
+        material_map,
+    });
 }
 
 fn add_item_texture(
-    on: On<ItemImagesAdded>,
+    on: On<Add, ItemIcon>,
     mut item_assets: ResMut<DroppedItemAssets>,
-    item_registry: Res<ItemRegistry>,
+    q_item_icon: Query<(ItemId, &ItemIcon)>,
     mut sm: ResMut<Assets<StandardMaterial>>,
-) {
-    for &item_id in on.event().0.iter() {
-        if let Some(image) = item_registry.images.get(&item_id) {
-            let material = StandardMaterial {
-                base_color_texture: Some(image.clone()),
-                alpha_mode: AlphaMode::Mask(0.5),
-                cull_mode: None,
-                ..default()
-            };
-            item_assets.material_map.insert(item_id, sm.add(material));
-        }
-    }
+) -> Result {
+    let item_id = on.event().entity;
+    let (item_id, image) = q_item_icon.get(item_id)?;
+    let material = StandardMaterial {
+        base_color_texture: Some(image.0.clone()),
+        alpha_mode: AlphaMode::Mask(0.5),
+        cull_mode: None,
+        ..default()
+    };
+    item_assets.material_map.insert(item_id, sm.add(material));
+
+    Ok(())
 }
 
 fn merge_items(

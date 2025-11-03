@@ -81,6 +81,7 @@ bevy_common_assets = { version = "0.14.0", default-features = false, features = 
     "ron",
 ] }
 bevy_skein = "0.3.0-rc.1"
+moonshine-kind = "0.4.1"
 
 [features]
 default = [

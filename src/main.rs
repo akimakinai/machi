@@ -29,10 +29,11 @@ use crate::{
     },
     explosion::ExplosionPlugin,
     inventory::Inventory,
-    item::{ItemId, ItemPlugin, ItemStack},
+    item::{BlockItem, ItemIndex, ItemKind, ItemPlugin, ItemStack},
     object::ObjectPlugin,
     pause::{Pause, PausePlugin},
     physics::GameLayer,
+    startup::{StartupPlugin, StartupSystems},
     terrain::{
         chunk::{BlockId, Chunk, ChunkPlugin, ChunkUpdated},
         edit::EditPlugin,
@@ -50,6 +51,7 @@ mod item;
 mod object;
 mod pause;
 mod physics;
+pub mod startup;
 mod terrain;
 mod ui;
 
@@ -74,6 +76,7 @@ fn main() {
         .add_plugins(ObjectPlugin)
         .add_plugins(ExplosionPlugin)
         .add_plugins(UiPlugin)
+        .add_plugins(StartupPlugin)
         .add_plugins(DevUtilPlugin)
         .add_plugins(FpsOverlayPlugin::default())
         .add_plugins(AssetLoadObserverPlugin::<Image>::default())
@@ -82,7 +85,14 @@ fn main() {
             PhysicsSystems::StepSimulation.run_if(in_state(Pause(false))),
         )
         .add_systems(Startup, startup)
-        .add_systems(Startup, (spawn_chunk, spawn_player))
+        .add_systems(
+            Startup,
+            register_block_items.in_set(StartupSystems::RegisterItems),
+        )
+        .add_systems(
+            Startup,
+            (spawn_chunk, spawn_player).in_set(StartupSystems::DevSetup),
+        )
         .add_systems(Update, mouse_grabbing)
         .run();
 }
@@ -139,11 +149,24 @@ fn spawn_chunk(mut commands: Commands, mut updated: MessageWriter<ChunkUpdated>)
     updated.write_batch(ids.into_iter().map(ChunkUpdated));
 }
 
+fn register_block_items(mut commands: Commands) {
+    let block_item_kinds = vec![
+        ItemKind::new("grass"),
+        ItemKind::new("dirt"),
+        ItemKind::new("stone"),
+    ];
+
+    for item_kind in block_item_kinds {
+        commands.spawn((item_kind, BlockItem));
+    }
+}
+
 fn spawn_player(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
+    item_index: Res<ItemIndex>,
 ) {
     let skybox_image = asset_server.load("textures/skybox.png");
     commands
@@ -212,15 +235,15 @@ fn spawn_player(
         .id();
 
     commands.spawn((
-        ItemStack::new(ItemId(1), 64).unwrap(),
+        ItemStack::new(item_index.get("grass").unwrap(), 64).unwrap(),
         ChildOf(inventory_id),
     ));
     commands.spawn((
-        ItemStack::new(ItemId(2), 32).unwrap(),
+        ItemStack::new(item_index.get("dirt").unwrap(), 32).unwrap(),
         ChildOf(inventory_id),
     ));
     commands.spawn((
-        ItemStack::new(ItemId(256), 16).unwrap(),
+        ItemStack::new(item_index.get("dynamite").unwrap(), 16).unwrap(),
         ChildOf(inventory_id),
     ));
 

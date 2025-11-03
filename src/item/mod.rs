@@ -1,34 +1,32 @@
 pub mod bone;
 pub mod dynamite;
+pub mod item_icon;
+pub mod item_use;
 
-use std::marker::PhantomData;
+use std::sync::Arc;
 
-use bevy::{
-    platform::collections::{HashMap, HashSet},
-    prelude::*,
-};
+use bevy::{platform::collections::HashMap, prelude::*};
+use moonshine_kind::Instance;
+
+use crate::startup::StartupSystems;
 
 pub struct ItemPlugin;
 
 impl Plugin for ItemPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ItemRegistry>()
-            .add_plugins((bone::plugin, dynamite::plugin))
+        app.init_resource::<ItemIndex>()
             .add_systems(
-                PreUpdate,
-                trigger_item_images_added_event.run_if(resource_changed::<ItemRegistry>),
-            );
+                Startup,
+                register_item_kinds.in_set(StartupSystems::FinalizeRegisterItems),
+            )
+            .add_plugins((bone::plugin, dynamite::plugin));
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ItemId(pub u32);
+#[derive(Component, Debug, Clone, Copy)]
+pub struct BlockItem;
 
-impl ItemId {
-    pub fn is_block(&self) -> bool {
-        self.0 < 256
-    }
-}
+pub type ItemId = Instance<ItemKind>;
 
 #[derive(Component, Debug, Clone, Copy)]
 pub struct ItemStack {
@@ -72,76 +70,32 @@ impl ItemStack {
     }
 }
 
+/// Item entity marker trait. Entity with this component represents an item kind.
+#[derive(Component, Debug, Clone)]
+pub struct ItemKind(pub Arc<str>);
+
+impl ItemKind {
+    pub fn new(name: impl Into<Arc<str>>) -> Self {
+        Self(name.into())
+    }
+}
+
 #[derive(Resource, Default)]
-pub struct ItemRegistry {
-    /// Functions that trigger corresponding `ItemUse` events.
-    /// This is for type erasure.
-    on_use: HashMap<ItemId, fn(&mut Commands, Entity)>,
-    pub images: HashMap<ItemId, Handle<Image>>,
+pub struct ItemIndex {
+    items: HashMap<Arc<str>, Instance<ItemKind>>,
 }
 
-/// ID type for items.
-pub trait Item: Sync + Send + 'static {
-    const USABLE: bool = false;
-}
-
-impl ItemRegistry {
-    pub fn register_item<T: Item>(&mut self, item_id: ItemId, image: Handle<Image>) {
-        if T::USABLE {
-            self.on_use
-                .insert(item_id, |commands: &mut Commands, player: Entity| {
-                    commands.trigger(ItemUse::<T>::new(player));
-                });
-        }
-        self.images.insert(item_id, image);
-    }
-
-    /// Returns true if the item is usable.
-    pub fn use_item(&self, item_id: ItemId, commands: &mut Commands, player: Entity) -> bool {
-        if let Some(on_use) = self.on_use.get(&item_id) {
-            on_use(commands, player);
-            true
-        } else {
-            false
-        }
+impl ItemIndex {
+    pub fn get(&self, name: &str) -> Option<ItemId> {
+        self.items.get(name).copied()
     }
 }
 
-#[derive(Event)]
-pub struct ItemUse<T> {
-    user: Entity,
-    marker: PhantomData<T>,
-}
-
-impl<T> ItemUse<T> {
-    pub fn new(user: Entity) -> Self {
-        Self {
-            user,
-            marker: PhantomData,
-        }
-    }
-
-    pub fn user(&self) -> Entity {
-        self.user
-    }
-}
-
-fn trigger_item_images_added_event(
-    mut commands: Commands,
-    item_registry: Res<ItemRegistry>,
-    mut seen_item_ids: Local<HashSet<ItemId>>,
+pub fn register_item_kinds(
+    q_item_kind: Query<(Instance<ItemKind>, &ItemKind)>,
+    mut item_index: ResMut<ItemIndex>,
 ) {
-    let mut new_item_ids = Vec::new();
-    for &item_id in item_registry.images.keys() {
-        if !seen_item_ids.contains(&item_id) {
-            seen_item_ids.insert(item_id);
-            new_item_ids.push(item_id);
-        }
-    }
-    if !new_item_ids.is_empty() {
-        commands.trigger(ItemImagesAdded(new_item_ids));
+    for (item_id, item_kind) in q_item_kind.iter() {
+        item_index.items.insert(item_kind.0.clone(), item_id);
     }
 }
-
-#[derive(Event, Debug)]
-pub struct ItemImagesAdded(pub Vec<ItemId>);

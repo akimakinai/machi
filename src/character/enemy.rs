@@ -18,9 +18,10 @@ use crate::{
         debug_annotation::{debug_annot_ui, target::AnnotTargetAabb},
         mesh_alpha::OverwriteAlpha,
     },
-    item::{ItemId, ItemStack},
+    item::{ItemIndex, ItemStack},
     object::dropped_item::dropped_item_bundle,
     physics::GameLayer,
+    startup::StartupSystems,
 };
 
 pub struct EnemyPlugin;
@@ -31,7 +32,7 @@ impl Plugin for EnemyPlugin {
             Update,
             (update_sleep_action, chase_action_update).in_set(AiActionSystems::UpdateAction),
         )
-        .add_systems(Startup, spawn_enemy);
+        .add_systems(Startup, spawn_enemy.in_set(StartupSystems::DevSetup));
     }
 }
 
@@ -39,7 +40,7 @@ impl Plugin for EnemyPlugin {
 #[require(Transform, Visibility, Health::new(100.0), DespawnOnDeath)]
 pub struct Enemy;
 
-fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>, item_index: Res<ItemIndex>) {
     let enemy_base = (
         Name::new("Enemy"),
         Enemy,
@@ -57,7 +58,7 @@ fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>) {
         AnnotTargetAabb,
         SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("models/Enemy.glb"))),
         OverwriteAlpha(0.8),
-        DropItemOnDeath(ItemStack::new(ItemId(257), 3).unwrap()),
+        DropItemOnDeath(ItemStack::new(item_index.get("bone").unwrap(), 3).unwrap()),
     );
 
     for i in 0..3 {

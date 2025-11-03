@@ -6,7 +6,10 @@ use bevy::{
     shader::ShaderRef,
 };
 
-use crate::item::{ItemId, ItemImagesAdded, ItemRegistry};
+use crate::{
+    item::{BlockItem, ItemId, ItemIndex, item_icon::ItemIcon},
+    startup::StartupSystems,
+};
 
 pub fn plugin(app: &mut App) {
     app.add_plugins(UiMaterialPlugin::<BlockIconMaterial>::default())
@@ -14,7 +17,10 @@ pub fn plugin(app: &mut App) {
         .init_resource::<ItemIconRegistry>()
         .add_observer(add_item_icon)
         .add_observer(item_image_updated)
-        .add_systems(Startup, register_item_icon_materials);
+        .add_systems(
+            Startup,
+            register_item_icon_materials.in_set(StartupSystems::PostRegisterItems),
+        );
 }
 
 /// UI node that displays an item icon.
@@ -32,6 +38,7 @@ fn add_item_icon(
     )>,
     registry: Res<ItemIconRegistry>,
     mut commands: Commands,
+    block_item: Query<(), With<BlockItem>>,
 ) {
     let entity = on.entity;
     let Ok((item_icon, block_material, item_material)) = query.get_mut(entity) else {
@@ -45,7 +52,7 @@ fn add_item_icon(
         return;
     };
 
-    if item_id.is_block() {
+    if block_item.contains(*item_id) {
         if item_material.is_some() {
             commands
                 .entity(entity)
@@ -53,7 +60,7 @@ fn add_item_icon(
         }
 
         let Some(new_mat) = registry.get_block(item_id) else {
-            error!("No block icon material for block id {}", item_id.0);
+            error!("No block icon material for item id {:?}", item_id);
             return;
         };
         if let Some(mut cur_mat) = block_material {
@@ -71,7 +78,7 @@ fn add_item_icon(
         }
 
         let Some(new_mat) = registry.get_item(item_id) else {
-            error!("No item icon material for item id {}", item_id.0);
+            error!("No item icon material for item id {:?}", item_id);
             return;
         };
         if let Some(mut cur_mat) = item_material {
@@ -137,37 +144,36 @@ impl ItemIconRegistry {
 }
 
 fn item_image_updated(
-    on: On<ItemImagesAdded>,
-    item_reg: Res<ItemRegistry>,
+    on: On<Add, ItemIcon>,
+    q_item: Query<(ItemId, &ItemIcon)>,
     mut reg: ResMut<ItemIconRegistry>,
     mut item_icon_materials: ResMut<Assets<ItemIconMaterial>>,
-) {
-    for &item_id in on.event().0.iter() {
-        if let Some(image) = item_reg.images.get(&item_id) {
-            reg.register_item(
-                item_id,
-                item_icon_materials.add(ItemIconMaterial {
-                    icon: image.clone(),
-                }),
-            );
-        }
-    }
+) -> Result {
+    let (item_id, item_icon) = q_item.get(on.entity)?;
+    reg.register_item(
+        item_id,
+        item_icon_materials.add(ItemIconMaterial {
+            icon: item_icon.0.clone(),
+        }),
+    );
+    Ok(())
 }
 
 fn register_item_icon_materials(
     mut registry: ResMut<ItemIconRegistry>,
     mut block_icon_mats: ResMut<Assets<BlockIconMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    item_index: Res<ItemIndex>,
 ) {
     let debug_tex = images.add(uv_debug_texture());
     registry.block_materials.insert(
-        ItemId(1),
+        item_index.get("grass").unwrap(),
         block_icon_mats.add(BlockIconMaterial {
             icon: debug_tex.clone(),
         }),
     );
     registry.block_materials.insert(
-        ItemId(2),
+        item_index.get("dirt").unwrap(),
         block_icon_mats.add(BlockIconMaterial {
             icon: debug_tex.clone(),
         }),

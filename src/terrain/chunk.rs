@@ -11,12 +11,23 @@ use bevy::{
     prelude::*,
 };
 
-use crate::{PlayerCamera, item::ItemId};
+use crate::{
+    PlayerCamera,
+    item::{ItemId, ItemIndex, register_item_kinds},
+    startup::StartupSystems,
+};
 
 pub struct ChunkPlugin;
 
 impl Plugin for ChunkPlugin {
     fn build(&self, app: &mut App) {
+        app.add_systems(
+            Startup,
+            create_block_id_map
+                .in_set(StartupSystems::PostRegisterItems)
+                .after(register_item_kinds),
+        );
+
         app.init_resource::<ChunkMap>()
             .add_message::<ChunkUpdated>()
             .add_observer(update_chunk_map)
@@ -54,10 +65,23 @@ impl BlockId {
     pub const fn is_solid(self) -> bool {
         self.0 > 64
     }
+}
 
-    pub fn as_item_id(self) -> ItemId {
-        ItemId(self.0 as u32)
+#[derive(Resource)]
+pub struct BlockIdMap(HashMap<BlockId, ItemId>);
+
+impl BlockIdMap {
+    pub fn get(&self, block_id: BlockId) -> Option<ItemId> {
+        self.0.get(&block_id).copied()
     }
+}
+
+// TODO
+fn create_block_id_map(mut commands: Commands, item_index: Res<ItemIndex>) {
+    let mut map = HashMap::default();
+    map.insert(BlockId(1), item_index.get("grass").unwrap());
+    map.insert(BlockId(2), item_index.get("dirt").unwrap());
+    commands.insert_resource(BlockIdMap(map));
 }
 
 #[derive(Component, Clone)]

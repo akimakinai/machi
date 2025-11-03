@@ -2,8 +2,10 @@ use avian3d::prelude::LinearVelocity;
 use bevy::{prelude::*, window::PrimaryWindow};
 
 use crate::{
-    item::ItemStack, object::dropped_item::dropped_item_bundle, pause::Pause,
-    terrain::chunk::BlockId,
+    item::ItemStack,
+    object::dropped_item::dropped_item_bundle,
+    pause::Pause,
+    terrain::chunk::{BlockId, BlockIdMap},
 };
 
 use super::chunk::{HoveredBlock, WriteBlocks};
@@ -30,6 +32,7 @@ fn on_click(
     mut blocks: WriteBlocks,
     mut commands: Commands,
     pause: Res<State<Pause>>,
+    block_id_map: Res<BlockIdMap>,
 ) -> Result<()> {
     if pause.0 {
         return Ok(());
@@ -46,18 +49,21 @@ fn on_click(
             }
 
             blocks.set_block(block_pos.0, BlockId(0))?;
-            let random_vel = LinearVelocity(Vec3::new(
-                (rand::random::<f32>() - 0.5) * 2.0,
-                rand::random::<f32>() * 2.0,
-                (rand::random::<f32>() - 0.5) * 2.0,
-            ));
-            commands.spawn((
-                dropped_item_bundle(ItemStack::new(block_id.as_item_id(), 1)?)?,
-                (
-                    Transform::from_translation(block_pos.0.as_vec3() + Vec3::splat(0.5)),
-                    random_vel,
-                ),
-            ));
+
+            if let Some(item_id) = block_id_map.get(block_id) {
+                let random_vel = LinearVelocity(Vec3::new(
+                    (rand::random::<f32>() - 0.5) * 2.0,
+                    rand::random::<f32>() * 2.0,
+                    (rand::random::<f32>() - 0.5) * 2.0,
+                ));
+                commands.spawn((
+                    dropped_item_bundle(ItemStack::new(item_id, 1)?)?,
+                    (
+                        Transform::from_translation(block_pos.0.as_vec3() + Vec3::splat(0.5)),
+                        random_vel,
+                    ),
+                ));
+            }
         }
         PointerButton::Secondary => {
             debug!("Hit pos: {:?}, Hit face: {:?}", block_pos.0, block_pos.1);

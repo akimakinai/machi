@@ -3269,6 +3269,7 @@ dependencies = [
  "lin_alg",
  "log",
  "mcubes",
+ "moonshine-kind",
  "rand",
  "tracing",
  "tracing-subscriber",
@@ -3367,6 +3368,18 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "moonshine-kind"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f89bb44c5c539bf5e422d239e6e3cc8aa926db823f01fdfb4df36bbd3c89e097"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_utils",
+ "disqualified",
 ]
 
 [[package]]

@@ -1,17 +1,17 @@
 use bevy::prelude::*;
 
-use crate::item::{Item, ItemId, ItemRegistry};
+use crate::{
+    item::{ItemKind, item_icon::ItemIcon},
+    startup::StartupSystems,
+};
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Startup, register_items);
+    app.add_systems(Startup, register_bone.in_set(StartupSystems::RegisterItems));
 }
 
-pub struct BoneItem;
-
-impl Item for BoneItem {
-    const USABLE: bool = false;
-}
-
-fn register_items(mut registry: ResMut<ItemRegistry>, asset_server: Res<AssetServer>) {
-    registry.register_item::<BoneItem>(ItemId(257), asset_server.load("textures/items/bone.png"));
+fn register_bone(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn((
+        ItemKind::new("bone"),
+        ItemIcon(asset_server.load("textures/items/bone.png")),
+    ));
 }

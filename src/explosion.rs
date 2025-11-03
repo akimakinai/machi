@@ -4,7 +4,7 @@ use crate::{
     character::health::{Health, deal_damage},
     item::ItemStack,
     object::dropped_item::dropped_item_bundle,
-    terrain::chunk::WriteBlocks,
+    terrain::chunk::{BlockIdMap, WriteBlocks},
 };
 
 pub struct ExplosionPlugin;
@@ -79,6 +79,7 @@ fn break_blocks_on_explode(
     mut blocks: WriteBlocks,
     mut commands: Commands,
     assets: Res<ExplosionAssets>,
+    block_id_map: Res<BlockIdMap>,
 ) -> Result<()> {
     for explode in explode_reader.read() {
         let radius = explode.radius.max(0.1);
@@ -104,9 +105,11 @@ fn break_blocks_on_explode(
                         continue;
                     }
 
-                    if let Some(block) = blocks.damage_block(block_pos, damage)? {
+                    if let Some(block) = blocks.damage_block(block_pos, damage)?
+                        && let Some(item_id) = block_id_map.get(block)
+                    {
                         commands.spawn((
-                            dropped_item_bundle(ItemStack::new(block.as_item_id(), 1)?)?,
+                            dropped_item_bundle(ItemStack::new(item_id, 1)?)?,
                             Transform::from_translation(block_center),
                         ));
                     }
