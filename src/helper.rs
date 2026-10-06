@@ -1,36 +1,34 @@
-use std::marker::PhantomData;
+use bevy::{ecs::error::CommandOutput, prelude::*};
 
-use bevy::prelude::*;
+pub struct CommandPipe<C, F>(C, F);
 
-pub struct CommandPipe<C, F, A>(C, F, PhantomData<A>);
-
-impl<C, F, A, B> Command<B> for CommandPipe<C, F, A>
+impl<C, F, B> Command for CommandPipe<C, F>
 where
-    A: Send + 'static,
-    C: Command<A>,
-    F: FnOnce(In<A>, &mut World) -> B + Send + 'static,
+    C: Command,
+    F: FnOnce(In<C::Out>, &mut World) -> B + Send + 'static,
+    B: CommandOutput,
 {
+    type Out = B;
+
     fn apply(self, world: &mut World) -> B {
-        let CommandPipe(c, f, _) = self;
+        let CommandPipe(c, f) = self;
         let a_result = c.apply(world);
         (f)(In(a_result), world)
     }
 }
 
-pub trait CommandExt: Sized {
+pub trait CommandExt: Command + Sized {
     /// Pass the output of this command into a function, creating a new compound command.
-    fn pipe<A, B, F>(self, f: F) -> CommandPipe<Self, F, A>
+    fn pipe<B, F>(self, f: F) -> CommandPipe<Self, F>
     where
-        Self: Command<A>,
-        F: FnOnce(In<A>, &mut World) -> B + Send + 'static;
+        F: FnOnce(In<Self::Out>, &mut World) -> B + Send + 'static;
 }
 
-impl<T: Sized> CommandExt for T {
-    fn pipe<A, B, F>(self, f: F) -> CommandPipe<Self, F, A>
+impl<T: Command> CommandExt for T {
+    fn pipe<B, F>(self, f: F) -> CommandPipe<Self, F>
     where
-        Self: Command<A>,
-        F: FnOnce(In<A>, &mut World) -> B + Send + 'static,
+        F: FnOnce(In<Self::Out>, &mut World) -> B + Send + 'static,
     {
-        CommandPipe(self, f, PhantomData)
+        CommandPipe(self, f)
     }
 }

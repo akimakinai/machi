@@ -9,7 +9,10 @@ pub struct Inventory {
 
 impl Inventory {
     /// Returns `Ok(remaining)` where `remaining` is the number of items that could not be added.
-    pub fn add_item_stack(inventory: Entity, item_stack: ItemStack) -> impl Command<Result<u32>> {
+    pub fn add_item_stack(
+        inventory: Entity,
+        item_stack: ItemStack,
+    ) -> impl Command<Out = Result<u32>> {
         move |world: &mut World| {
             let children = world
                 .get::<Children>(inventory)

@@ -55,10 +55,10 @@ pub fn build_hotbar(In(hotbar): In<Hotbar>, mut commands: Commands) -> Result<()
                         },
                     ))
                     .with_child((
-                        BorderRadius::all(px(4.0)),
                         BackgroundColor(Color::BLACK),
                         Node {
                             width: px(15.0),
+                            border_radius: BorderRadius::all(px(4.0)),
                             position_type: PositionType::Absolute,
                             right: px(0),
                             bottom: px(0),
@@ -67,7 +67,7 @@ pub fn build_hotbar(In(hotbar): In<Hotbar>, mut commands: Commands) -> Result<()
                         children![(
                             Text::default(),
                             TextFont {
-                                font_size: 12.0,
+                                font_size: FontSize::Px(12.0),
                                 ..default()
                             },
                         )],

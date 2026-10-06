@@ -5,7 +5,7 @@ use bevy::{
     ecs::{query::QueryData, system::lifetimeless::Read},
     prelude::*,
     ui_widgets::{
-        ControlOrientation, CoreScrollbarDragState, CoreScrollbarThumb, Scrollbar, ScrollbarPlugin,
+        ControlOrientation, Scrollbar, ScrollbarDragState, ScrollbarPlugin, ScrollbarThumb,
     },
 };
 use tracing::Subscriber;
@@ -95,16 +95,12 @@ fn make_scrollbar(target: Entity, width: f32) -> impl Bundle {
         Scrollbar::new(target, ControlOrientation::Vertical, 20.0),
         BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.5)),
         children![(
-            CoreScrollbarThumb,
+            ScrollbarThumb {
+                border_radius: BorderRadius::MAX,
+                border: UiRect::all(Val::Px(2.0)),
+            },
             BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.5)),
             BorderColor::from(Color::srgba(0.0, 0.0, 0.0, 0.5)),
-            BorderRadius::MAX,
-            Node {
-                position_type: PositionType::Absolute,
-                border: UiRect::all(Val::Px(2.0)),
-                width: Val::Percent(100.0),
-                ..default()
-            },
         ),],
     )
 }
@@ -219,7 +215,7 @@ fn scroll_to_bottom(
 fn detect_scrollbar_drag(
     mut area: Query<(&mut LogWindowMessageArea, &ScrollPosition, &ComputedNode)>,
     scrollbars: Query<(&Scrollbar, &Children)>,
-    scrollbar_state: Query<&CoreScrollbarDragState>,
+    scrollbar_state: Query<&ScrollbarDragState>,
 ) {
     const SCROLL_BOTTOM_THRESHOLD: f32 = 0.1;
 
@@ -341,7 +337,7 @@ fn process_log_messages(
                     _ => css::WHITE,
                 });
                 let font = TextFont {
-                    font_size: 8.0,
+                    font_size: FontSize::Px(8.0),
                     ..default()
                 };
                 for id in &message_area {

@@ -3,7 +3,7 @@
 use bevy::{
     ecs::{lifecycle::HookContext, world::DeferredWorld},
     prelude::*,
-    scene::SceneInstanceReady,
+    world_serialization::WorldInstanceReady,
 };
 
 /// Add this component to the root of a scene to set alpha for `StandardMaterial::base_color` of all meshes in the scene.
@@ -19,7 +19,7 @@ fn overwrite_alpha_on_add(mut world: DeferredWorld, context: HookContext) {
 }
 
 fn overwrite_alpha_on_scene_ready(
-    on: On<SceneInstanceReady>,
+    on: On<WorldInstanceReady>,
     overwrite_alpha: Query<&OverwriteAlpha>,
     children: Query<&Children>,
     mesh_materials: Query<&MeshMaterial3d<StandardMaterial>>,
@@ -33,7 +33,7 @@ fn overwrite_alpha_on_scene_ready(
 
     children.iter_descendants(scene_root).for_each(|id| {
         if let Ok(mesh_material) = mesh_materials.get(id)
-            && let Some(mat) = materials.get_mut(&mesh_material.0)
+            && let Some(mut mat) = materials.get_mut(&mesh_material.0)
         {
             mat.base_color = mat.base_color.with_alpha(alpha);
             if mat.alpha_mode == AlphaMode::Opaque && alpha < 1.0 {

@@ -77,9 +77,9 @@ pub fn build_inventory_root(
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(16.0)),
                 border: UiRect::all(Val::Px(6.0)),
+                border_radius: BorderRadius::all(px(6.0)),
                 ..default()
             },
-            BorderRadius::all(px(6.0)),
             BorderColor {
                 top: INVENTORY_BORDER_TOP,
                 right: INVENTORY_BORDER_BOTTOM,
@@ -109,11 +109,11 @@ pub fn build_inventory_root(
                                 height: Val::Px(slot_size),
                                 margin: UiRect::all(Val::Px(slot_gap * 0.5)),
                                 border: UiRect::all(Val::Px(2.0)),
+                                border_radius: BorderRadius::all(px(2.0)),
                                 ..default()
                             },
                             BackgroundColor(INVENTORY_SLOT_BACKGROUND),
                             BorderColor::all(INVENTORY_SLOT_BACKGROUND.darker(0.2)),
-                            BorderRadius::all(px(2.0)),
                         ));
                         slot.with_children(|slot| {
                             slot.spawn((
@@ -140,7 +140,7 @@ pub fn build_inventory_root(
                                 Text::new(String::new()),
                                 TextColor(Color::BLACK),
                                 TextFont {
-                                    font_size: 12.0,
+                                    font_size: FontSize::Px(12.0),
                                     ..default()
                                 },
                                 TextBackgroundColor(Color::WHITE),

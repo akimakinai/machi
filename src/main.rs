@@ -1,15 +1,13 @@
 use avian3d::prelude::*;
 use bevy::{
+    camera::Hdr,
     core_pipeline::Skybox,
     dev_tools::fps_overlay::FpsOverlayPlugin,
-    ecs::error::DefaultErrorHandler,
+    ecs::error::FallbackErrorHandler,
     log::{DEFAULT_FILTER, LogPlugin},
     post_process::bloom::Bloom,
     prelude::*,
-    render::{
-        render_resource::{TextureViewDescriptor, TextureViewDimension},
-        view::Hdr,
-    },
+    render::render_resource::{TextureViewDescriptor, TextureViewDimension},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_skein::SkeinPlugin;
@@ -63,7 +61,7 @@ const PLAYER_INVENTORY_SIZE: u32 = 36;
 
 fn main() {
     App::new()
-        .insert_resource(DefaultErrorHandler(bevy::ecs::error::error))
+        .insert_resource(FallbackErrorHandler(bevy::ecs::error::error))
         .add_plugins(DefaultPlugins.set(LogPlugin {
             filter: format!("{},{}=debug", DEFAULT_FILTER, env!("CARGO_PKG_NAME")),
             custom_layer: |_app| Some(LogWindowLayer.boxed()),
@@ -104,7 +102,7 @@ fn main() {
 fn startup(mut commands: Commands) {
     commands.spawn((
         DirectionalLight {
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(
@@ -115,7 +113,7 @@ fn startup(mut commands: Commands) {
         )),
     ));
 
-    commands.insert_resource(AmbientLight {
+    commands.insert_resource(GlobalAmbientLight {
         brightness: 200.0,
         ..default()
     });
@@ -177,9 +175,13 @@ fn spawn_player(
         .spawn(AssetLoadObserved(skybox_image.clone()))
         .observe(
             |on: On<AssetLoad<Image>>, mut images: ResMut<Assets<Image>>| {
-                let image = images.get_mut(&on.handle).unwrap();
+                let mut image = images.get_mut(&on.handle).unwrap();
                 if image.texture_descriptor.array_layer_count() == 1 {
-                    image.reinterpret_stacked_2d_as_array(image.height() / image.width());
+                    let layers = image.height() / image.width();
+                    if let Err(e) = image.reinterpret_stacked_2d_as_array(layers) {
+                        error!("Failed to reinterpret skybox image as cube texture: {e}");
+                        return;
+                    }
                     image.texture_view_descriptor = Some(TextureViewDescriptor {
                         dimension: Some(TextureViewDimension::Cube),
                         ..default()
@@ -216,7 +218,7 @@ fn spawn_player(
                 PlayerCamera,
                 AnnotTargetCamera,
                 Skybox {
-                    image: skybox_image,
+                    image: Some(skybox_image),
                     brightness: 1000.0,
                     ..default()
                 },

@@ -117,14 +117,16 @@ fn create_array_texture(
     }
 
     let mut process = |handle: &Handle<Image>| {
-        let image = images
+        let mut image = images
             .get_mut(handle)
             .expect("Image should have been loaded");
 
         // Convert array texture assuming 1:1 aspect ratio
         debug_assert_eq!(image.height() % image.width(), 0);
         let array_layers = image.height() / image.width();
-        image.reinterpret_stacked_2d_as_array(array_layers);
+        image
+            .reinterpret_stacked_2d_as_array(array_layers)
+            .expect("Terrain texture should be a vertical stack of square layers");
 
         let desc = image.sampler.get_or_init_descriptor();
         desc.address_mode_u = ImageAddressMode::Repeat;

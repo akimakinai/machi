@@ -164,7 +164,7 @@ fn update_behavior_trees(
         Query<(), With<ActiveNode>>,
     )>,
 ) -> Result<()> {
-    let (mut active_nodes, is_active) = queries.get(world);
+    let (mut active_nodes, is_active) = queries.get(world)?;
 
     let mut node_parents = HashMap::new();
     let mut leaf_nodes = EntityHashSet::new();
@@ -446,7 +446,7 @@ mod tests {
         let grandchild = world.spawn(ChildOf(child)).id();
 
         let mut state: SystemState<AiTarget> = SystemState::new(&mut world);
-        let ai_target = state.get(&world);
+        let ai_target = state.get(&world).unwrap();
 
         assert_eq!(ai_target.get_target(root).unwrap(), target);
         assert_eq!(ai_target.get_target(child).unwrap(), target);

@@ -56,7 +56,7 @@ fn spawn_enemy(mut commands: Commands, asset_server: Res<AssetServer>, item_inde
             [GameLayer::Terrain, GameLayer::Character],
         ),
         AnnotTargetAabb,
-        SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("models/Enemy.glb"))),
+        WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("models/Enemy.glb"))),
         OverwriteAlpha(0.8),
         DropItemOnDeath(ItemStack::new(item_index.get("bone").unwrap(), 3).unwrap()),
     );
